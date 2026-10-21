@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QwenPaw-Data 核心工作流程（可下钻）</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; font-size: 14px; line-height: 1.7;
+         color: #233; margin: 0; background: #fbfcfd; padding: 0 0 60px; }
+  h1 { font-size: 20px; text-align: center; margin: 20px 0 4px; }
+  .sub { text-align: center; color: #78868e; font-size: 13px; margin-bottom: 14px; }
+
+  .tabs { display: flex; justify-content: center; gap: 8px; margin: 0 0 12px; }
+  .tabs button { font: inherit; font-size: 13.5px; padding: 6px 18px; border: 1px solid #b9c4cc;
+                 background: #fff; color: #456; border-radius: 20px; cursor: pointer; }
+  .tabs button:hover { background: #eef3f7; }
+  .tabs button.on { background: #3d6b8f; color: #fff; border-color: #3d6b8f; }
+
+  .mapwrap { max-width: 1300px; margin: 0 auto; padding: 0 10px; }
+  svg.main { width: 100%; height: auto; display: block; background: #fff;
+             border: 1px solid #dbe2e7; border-radius: 10px; }
+
+  /* 节点配色 = 子系统归属：蓝 Host 执行 / 橙 Skill-Hub 方法 / 绿 DataBridge 事实 / 紫 人机交互 / 灰 示例 */
+  .nd rect { fill: #f4f8fb; stroke: #8fa8bd; stroke-width: 1.2px; cursor: pointer; transition: all .12s; }
+  .nd text { cursor: pointer; pointer-events: none; }
+  .nd:hover rect { fill: #e3eef7; stroke: #3d6b8f; stroke-width: 1.8px; }
+  .nd.sel rect { fill: #dbe9f5; stroke: #2b5773; stroke-width: 2.4px; }
+  .nd.sk rect { fill: #fdf4e5; stroke: #c99a30; }
+  .nd.db rect { fill: #eaf7ef; stroke: #5aa877; }
+  .nd.ui rect { fill: #f0eaf7; stroke: #a184c4; }
+  .nd.demo rect { fill: #f6f5f1; stroke: #b3ab96; }
+  .nd.sk:hover rect { fill: #faeacd; stroke: #a87e20; }
+  .nd.db:hover rect { fill: #d8f0e2; stroke: #3f8a5e; }
+  .nd.ui:hover rect { fill: #e6dcf5; stroke: #8a6fbf; }
+  .nd.demo:hover rect { fill: #eeece3; stroke: #948b72; }
+
+  path.ln { fill: none; stroke: #93a5b3; stroke-width: 1.5px; marker-end: url(#ah); }
+  path.ln.side { stroke: #b3c0ca; stroke-dasharray: 5 3; }
+  path.ln.db { stroke: #7fbf8f; stroke-width: 1.6px; stroke-dasharray: 6 4; marker-end: url(#ahg); }
+  .lbl { font-size: 12px; fill: #6b7c88; }
+
+  .detail { max-width: 1300px; margin: 16px auto 0; padding: 0 10px; }
+  .panel { background: #fff; border: 1px solid #dbe2e7; border-left: 5px solid #3d6b8f;
+           border-radius: 10px; padding: 16px 20px 18px; }
+  .panel.sk { border-left-color: #c99a30; }
+  .panel.db { border-left-color: #4f9f6f; }
+  .panel.ui { border-left-color: #8a6fbf; }
+  .panel.demo { border-left-color: #b3ab96; }
+  .panel h2 { margin: 0 0 2px; font-size: 19px; }
+  .panel .lead { color: #5a6b76; font-size: 13.5px; margin: 0 0 12px; }
+
+  .tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 3px;
+         vertical-align: 3px; margin-left: 8px; border: 1px solid; }
+  .t-host { background: #e3eef7; color: #2b5773; border-color: #8fa8bd; }
+  .t-sk   { background: #fdf4e5; color: #7a5a10; border-color: #d9b45c; }
+  .t-db   { background: #d9f0d9; color: #1a5c1a; border-color: #7fbf7f; }
+  .t-ui   { background: #ece4f7; color: #4a2f6b; border-color: #a184c4; }
+  .t-demo { background: #f0efe9; color: #5c5847; border-color: #b3ab96; }
+
+  .sec { margin: 14px 0 0; }
+  .sec > .h { font-size: 13px; color: #3d6b8f; font-weight: bold; margin-bottom: 6px;
+              padding-bottom: 3px; border-bottom: 1px dashed #d5dee5; }
+  .say { border-left: 3px solid #9fb0bd; background: #f6f8fa; padding: 8px 12px;
+         margin: 8px 0; font-size: 13.5px; border-radius: 0 5px 5px 0; }
+  .say.warn { border-left-color: #d0a13c; background: #fdf9ef; }
+  .say.red  { border-left-color: #cf6a7a; background: #fdf3f4; }
+  .say.green{ border-left-color: #4f9f6f; background: #f3f9f5; }
+
+  pre.data { background: #f4f6f8; border: 1px solid #d5dde3; border-radius: 6px; padding: 8px 11px;
+             font-size: 12.2px; line-height: 1.55; overflow-x: auto;
+             font-family: Consolas, "Courier New", monospace; margin: 6px 0; color: #2a3b47; }
+  pre.data em { font-style: normal; color: #7a8a96; } /* 注释灰 */
+
+  .steps { display: flex; gap: 0; flex-wrap: wrap; align-items: stretch; }
+  .st { flex: 1 1 165px; border: 1px solid #b9c8d4; border-radius: 7px; padding: 8px 10px;
+        background: #f4f8fb; font-size: 13px; margin: 4px 0; }
+  .st > b { display: block; font-size: 13px; margin-bottom: 2px; }
+  .st > span { color: #5f6f7a; font-size: 12.3px; }
+  .st.in  { background: #eaf2f8; border-color: #8fa8bd; }
+  .st.out { background: #eaf7ef; border-color: #7fbf8f; }
+  .st.br  { background: #fdf4e5; border-color: #d9b45c; }
+  .st.bad { background: #fdf0f1; border-color: #cf6a7a; }
+  .arw { align-self: center; color: #93a5b3; font-weight: bold; padding: 0 6px; font-size: 15px; }
+
+  table.mini { border-collapse: collapse; width: 100%; font-size: 13px; margin: 4px 0; }
+  table.mini th, table.mini td { border: 1px solid #d8e0e6; padding: 5px 9px; text-align: left; vertical-align: top; }
+  table.mini th { background: #f0f4f7; }
+  code { background: #eef1f4; padding: 1px 4px; border-radius: 3px; font-size: 12.3px; }
+  svg.flow { width: 100%; max-width: 920px; height: auto; display: block; margin: 4px 0 2px; }
+  svg.flow .fbox { fill: #f4f8fb; stroke: #8fa8bd; stroke-width: 1.1px; }
+  svg.flow .fbox.hot { fill: #eaf7ef; stroke: #5aa877; }
+  svg.flow .fbox.bad { fill: #fdf0f1; stroke: #cf6a7a; }
+  svg.flow .fbox.dim { fill: #fafcfd; stroke: #c3cdd5; }
+  svg.flow .dia { fill: #fdf4e5; stroke: #c99a30; }
+  svg.flow text { font-size: 12px; fill: #2a3b47; }
+  svg.flow text.sub { font-size: 11px; fill: #66757f; }
+  svg.flow text.t-lbl { font-size: 11px; fill: #8b9aa4; }
+  svg.flow path.fl { fill: none; stroke: #93a5b3; stroke-width: 1.4px; }
+  svg.flow path.fl.bad { stroke: #cf6a7a; stroke-dasharray: 4 3; }
+  .hint { text-align: center; color: #8b9aa4; font-size: 12.5px; margin: 10px 0 0; }
+  @media print { .tabs { display: none; } }
+</style>
+</head>
+<body>
+
+<h1>QwenPaw-Data 核心工作流程（可下钻）</h1>
+<div class="sub">事实（DataBridge）× 方法（Skill-Hub）× 执行（Host）三子系统协同 · 节点颜色 = 子系统归属 · 点任意方块，展开子流程 + 实际输入输出数据结构 + 代码位置</div>
+
+<div class="tabs">
+  <button id="tab-run" class="on" onclick="switchTab('run')">运行侧（一次分析请求的生命周期）</button>
+  <button id="tab-build" onclick="switchTab('build')">建图侧（事实与方法资产怎么建好）</button>
+</div>
+
+<div class="mapwrap">
+  <svg class="main" id="map" viewBox="0 0 1280 545" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/>
+      </marker>
+      <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#7fbf8f"/>
+      </marker>
+    </defs>
+  </svg>
+  <p class="hint" id="hint">点击图中任意方块，查看该环节的子流程、输入输出与代码位置</p>
+</div>
+
+<div class="detail" id="detail"></div>
+
+<script>
+const NODES = {
+/* ───────────────────────── 运行侧：一次分析请求的生命周期 ───────────────────────── */
+
+"n0": `<div class="panel">
+<h2>⓪ 请求入口<span class="tag t-host">Host</span></h2>
+<p class="lead">一句话从四条路进来，全部汇到同一个 Host 运行时——差别只在传输层，不在执行层。</p>
+<div class="sec"><div class="h">四条进入路径（实际调用）</div>
+<pre class="data">CLI:    qwenpaw-data run --datasource-id ds_gaap "分析产品X的有效用户平均GAAP值"
+        → QwenPawDataHost.run()                      <em>(host-core core.py:140)</em>
+Engine: POST /api/v1/sessions/{sid}/chats
+        {"text": "...", "datasource_id": "ds_gaap"}  <em>(api/routers/chats.py:21)</em>
+定时:    CronManager 到点自动开一个 console chat       <em>(cron/manager.py:137)</em>
+CLI 命令族: plan | execute | run | chat | datasource | semantic | doctor
+        plan 只出 SOP YAML · execute 跑已有 SOP · run 一口气做完</pre></div>
+<div class="sec"><div class="h">内部子流程（CLI 路径）</div><div class="steps">
+<div class="st in"><b>加载环境</b><span>main.py 读 .env · 配日志</span></div>
+<span class="arw">→</span>
+<div class="st"><b>构造 Host</b><span>create_qwenpaw_data()：home / workspace / 权限模式</span></div>
+<span class="arw">→</span>
+<div class="st"><b>建立会话</b><span>Engine 先建 session 再开 chat</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>交给 ①</b><span>ChatRuntime 接管回合</span></div>
+</div></div>
+<div class="say warn"><b>两个约束：</b>同一会话同一时刻只允许一个回合（409 拒绝并发）；Engine 单进程部署（uvicorn --workers 1），事件扇出在进程内完成。</div>
+<div class="say green"><b>默认安全姿势：</b>--workspace 默认 docker（分析代码在容器里跑），--permission-mode auto 在容器内等效 bypass、本地退化为 accept_edits。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-cli/src/qwenpaw_data/cli/main.py</code> · <code>commands/run.py</code> · <code>commands/plan.py</code> · <code>host-core api/app.py:93 create_app</code></p></div>
+</div>`,
+
+"n1": `<div class="panel">
+<h2>① 会话编排（ChatRuntime）<span class="tag t-host">Host</span></h2>
+<p class="lead">把「一次提问」变成一个可观测、可恢复的回合——事件持久化、SSE 直播、追问与轨迹收集器都在这层挂上。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">输入: Chat {session_id, text, datasource_id, attachments[]}
+      TurnInput = 附件 + 产物评论 + 文本              <em>(runtime/turn.py:64)</em>
+编排: ChatRuntime._run()                              <em>(runtime/chat_runtime.py:128)</em>
+输出: AgentEvent 流 → Envelope.translate_event → StreamObject（SSE 帧）
+      每帧带稠密序号 id · 先持久化再经 EventHub 广播</pre></div>
+<div class="sec"><div class="h">回合内部子流程</div><div class="steps">
+<div class="st in"><b>注册运行时</b><span>RuntimeRegistry 登记本回合</span></div>
+<span class="arw">→</span>
+<div class="st"><b>取会话级 Host</b><span>QwenPawDataHostRegistry.get(session_id)</span></div>
+<span class="arw">→</span>
+<div class="st"><b>开事件流</b><span>Envelope.begin → response.created</span></div>
+<span class="arw">→</span>
+<div class="st"><b>挂收集器</b><span>FollowUp · BizTrace</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>驱动智能体</b><span>AgentExecutor.start → ②</span></div>
+</div></div>
+<div class="say green"><b>事件先落库再广播：</b>SSE 断线可用 Last-Event-ID 从持久化历史续播，服务重启不丢；孤儿运行回合在启动时统一取消。</div>
+<div class="say"><b>回合结束不是终点：</b>_finish 出终帧之前，先投递 biztrace 与 followup，再调度后台 settlement 检测（⑫）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>runtime/chat_runtime.py:55,110,128</code> · <code>runtime/executor.py:62</code> · <code>stream/output_stream.py:13</code> · <code>api/routers/events.py:31</code></p></div>
+</div>`,
+
+"n2": `<div class="panel">
+<h2>② 智能体构建（工具箱与技能挂载）<span class="tag t-host">Host</span></h2>
+<p class="lead">每个会话惰性构建一次智能体：容器工作区 + 分组工具 + DataBridge MCP + 31 个技能 + 三个中间件，一次装配。</p>
+<div class="sec"><div class="h">装配清单（_get_agent 实际产出）</div>
+<pre class="data">QwenPawDataHost._get_agent()                    <em>(core.py:195)</em>
+├─ 工作区  create_docker_workspace()            <em>(utils/workspace.py:333)</em>
+│    python:3.11-slim + pandas/numpy/matplotlib
+│    MCP 回环地址改写 host.docker.internal + 注入 bearer
+├─ RuntimeStateManager（DAG 状态 + 产物路径上下文）
+├─ build_qwenpaw_data_toolkit()                 <em>(agent/toolkit.py:215)</em>
+│    plan 组:  create_plan + revise_current_plan + 只读 CM 工具
+│              <em>execute_sql 被 _is_plan_safe_mcp_tool 挡在门外</em>
+│    agent 组: DAG 四工具 + Bash/Read/Write/Edit/Glob/Grep
+│              + execute_sql + 全部技能
+├─ 技能    discover_builtin_skills() rglob SKILL.md
+│           frontmatter name 平铺命名空间 · 只挂 agent 组
+└─ 中间件  SqlArtifact / Steer / Settlement</pre></div>
+<div class="say warn"><b>plan 与 agent 两组工具互斥</b>（toolkit.py:204 按模式过滤）——规划期不许碰数，执行期才放开。子智能体再按角色二次过滤（data_fetcher 只见 fetch-data）。</div>
+<div class="say"><b>技能怎么到模型眼前：</b>技能目录种进工作区 skills/，MASTER.md 要求「做复杂分析前先读 skills/&lt;name&gt;/SKILL.md」。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>core.py:195</code> · <code>agent/toolkit.py:215,204</code> · <code>utils/skill.py</code> · <code>utils/workspace.py:284,333</code> · <code>prompts/MASTER.md</code></p></div>
+</div>`,
+
+"n3": `<div class="panel ui">
+<h2>③ 澄清与人机干预<span class="tag t-ui">人机交互</span></h2>
+<p class="lead">长链路执行保留四个干预点：缺信息问用户、中途插话、直接改计划、随时叫停——澄清是兜底，不是常态。</p>
+<div class="sec"><div class="h">四条通道（实际机制）</div>
+<table class="mini">
+<tr><th>通道</th><th>机制</th><th>入口</th></tr>
+<tr><td><b>问用户</b></td><td>ask_user_question 工具 → RequireExternalExecutionEvent 暂停回合，答案送达后恢复</td><td><code>POST .../clarification/answer</code></td></tr>
+<tr><td><b>中途插话</b></td><td>SteerMiddleware 在下一个安全推理边界把文本注入为 HintBlock</td><td><code>POST .../steer</code></td></tr>
+<tr><td><b>改计划</b></td><td>replace_plan：节点重置 todo + 注入「[用户更新了当前计划]」</td><td><code>POST .../plan/edit</code></td></tr>
+<tr><td><b>中断/停止</b></td><td>handle_interrupt 暂停并产出进度摘要；stop 取消运行中回合</td><td><code>POST .../stop</code></td></tr>
+</table></div>
+<div class="say green"><b>先查再问：</b>analysis-plan-builder 的规矩是缺信息先用语义层工具查（⑧），查不到才升级为问用户——把打扰次数压到最低。</div>
+<div class="say"><b>面板改计划同路：</b>外部计划面板的编辑以「[外部变更通知]」系统消息注入（middleware.py:183），与 API 改计划走同一恢复路径。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>runtime/executor.py:33</code> · <code>agent/middleware/steer.py:53</code> · <code>api/routers/plan.py:25</code> → <code>chat_runtime.py:428</code> → <code>qwenpaw_data_agent.py:160</code> · <code>api/routers/clarification.py</code></p></div>
+</div>`,
+
+"n4": `<div class="panel sk">
+<h2>④ 意图路由（data-intent-router）<span class="tag t-sk">Skill-Hub L0</span></h2>
+<p class="lead">第一个技能先判「这是什么类型的活」——元数据问答和深度分析走完全不同深度的链路，路由错一次就白跑一趟。</p>
+<div class="sec"><div class="h">路由判定表（SKILL.md 实际分类）</div>
+<pre class="data">1a 元数据查询   "GAAP 指标怎么定义的？"       → 直接查语义层，轻路径
+1b 数据查询     "3月10日的GAAP是多少？"        → 取数即答
+2a BI 业务分析  "为什么3月10日GAAP涨了5倍？"   → 本流程主线（规划→DAG→归因）
+2b 数据探索 / 2c 统计建模 / 2d 量化计算 / 2e 报告生成
+3 非数据请求                                   → 不进数据链路
+输出: 路由结论 + 下一步应加载的技能链</pre></div>
+<div class="say"><b>路由是提示词约束下的模型行为</b>，不是硬编码分类器；skill-hub-guide（meta 层）要求加载任何技能前先读它——各层的调用链写在那里。</div>
+<div class="say warn"><b>错的代价不对称：</b>把元数据问答当深度分析跑，多花一整条 DAG；把深度分析当闲聊答，用户拿到一个没有依据的数——后者更贵。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/routing/data-intent-router/SKILL.md</code> · <code>skills/meta/skill-hub-guide/SKILL.md</code></p></div>
+</div>`,
+
+"n5": `<div class="panel sk">
+<h2>⑤ 任务规划 → DAG<span class="tag t-sk">Skill-Hub L1</span></h2>
+<p class="lead">规划技能先读语义层做接地，再调 create_plan 把请求拆成 TaskNode DAG——大模型出结构，Host 负责校验、快照与广播。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">上下文收集: analysis-plan-builder 用只读 CM 工具接地
+            (search_context / get_domain_overview …)
+            缺失信息 → ③ 问用户（先查后问）
+创建计划:   create_plan(name, description, expected_outcome, nodes)
+            <em>(orchestration/state.py:510 · schema orchestration/tools.py:40)</em>
+   → TaskNode[] · deps 归一(name→id) · Kahn 拓扑环检测   <em>(task_graph.py:461)</em>
+   → DAGStore 原子快照 → SSE task_status(graph_snapshot)
+纯结构产物: SOP / SOPNode（可序列化 YAML）
+   CLI plan 产物即它 · execute 吃回它                <em>(task_graph.py:609,619)</em></pre></div>
+<div class="sec"><div class="h">规划子流程</div><div class="steps">
+<div class="st in"><b>读语义层</b><span>plan 模式只读 CM 工具</span></div>
+<span class="arw">→</span>
+<div class="st"><b>起草计划</b><span>结构化 YAML 草案</span></div>
+<span class="arw">→</span>
+<div class="st"><b>create_plan</b><span>依赖归一 + 环检测</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>快照广播</b><span>DAGStore → task_status</span></div>
+</div></div>
+<div class="say warn"><b>规划期不许碰数：</b>plan 组工具白名单只有 create_plan / revise_current_plan + 只读 MCP（toolkit.py:23 挡掉 execute_sql）——先想清楚再动手。</div>
+<div class="say"><b>计划可修订：</b>revise_current_plan 支持原子批量增/改/删节点，下游自动重置 todo（apply_plan_changes，task_graph.py:977）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>orchestration/state.py:510,670</code> · <code>orchestration/tools.py:28,40</code> · <code>prompts/PLAN_MODE.md</code> · <code>skills/planning/analysis-plan-builder/SKILL.md</code></p></div>
+</div>`,
+
+"n6": `<div class="panel">
+<h2>⑥ DAG 执行循环<span class="tag t-host">Host</span></h2>
+<p class="lead">hint 驱动的逐节点循环：每轮把「就绪节点」注入 system-hint，模型选一个执行、登记产物、推进状态；提前收工会被推着继续。</p>
+<div class="sec"><div class="h">循环实际运转（每轮发生什么）</div>
+<pre class="data">每轮注入: &lt;system-hint&gt; ← DefaultGraphToHint
+   就绪节点列表 + 「一次只执行一个节点」            <em>(orchestration/hint.py:92)</em>
+节点生命周期: update_subtask(node_id, status, files=[FileRef])
+   todo → in_progress（同时只允许一个, state.py:646）→ done
+   done 时 _validate_files: 路径解析 / 穿越检查 / 业务视图 HTML 校验
+   → ArtifactItem 追加进会话级只增列表              <em>(orchestration/artifact.py:19)</em>
+驱动兜底: 模型提前停 → _continue_current_graph_stream
+   最多 6 轮「继续执行剩余未完成的节点」              <em>(qwenpaw_data_agent.py:356 · :49)</em>
+失败策略(AGENT_MODE.md): 重试(status→todo) / 修订计划(revise) / 放弃(abandoned)</pre></div>
+<div class="sec"><div class="h">产物落盘位置</div>
+<pre class="data">~/.qwenpaw-data/host/workspace/artifacts/{session_id}/[{graph_id}/{node_id}/]
+数据集 CSV 在 data/raw/&lt;id&gt;.csv · 路径解析 artifact_paths.py:18</pre></div>
+<div class="say warn"><b>节点级刻意串行：</b>hint 明确要求一次一个节点；真正的并行在下一层——同一条消息里多个 spawn_subagent 并发执行（信号量 4，见⑦）。</div>
+<div class="say green"><b>两种产物登记：</b>声明式（update_subtask files=，经过校验）+ 发现式（回合内 diff 产物目录，漏网文件也发 artifact.registered 事件）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>orchestration/hint.py:92</code> · <code>orchestration/state.py:574,646</code> · <code>qwenpaw_data_agent.py:356</code> · <code>prompts/AGENT_MODE.md:14-19</code> · <code>paths.py:88</code></p></div>
+</div>`,
+
+"n7": `<div class="panel sk">
+<h2>⑦ 数据获取（fetch-data 工作流）<span class="tag t-sk">Skill-Hub 工作流</span></h2>
+<p class="lead">取数走子智能体：data_fetcher 只带 fetch-data 技能和数据工具，NL2SQL 出 SQL，经 DataBridge 执行，CSV 自动物化成产物。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">派发: spawn_subagent(role="data_fetcher", task=…)      <em>(agent/spawn_subagent.py:358)</em>
+  角色工具箱: Bash/Read/Write/Edit/Glob/Grep + 全部 MCP
+              + 仅 fetch-data 一个技能                 <em>(spawn_subagent.py:61 ROLE_SKILL_NAMES)</em>
+  约束: 总数 ≤ 20 · 并发信号量 4 · 子智能体 max_iters 50 · 期限 6000s
+  上游产物自动汇总注入（get_upstream_outputs）
+执行: mcp__&lt;server&gt;__execute_sql（CM 侧 cm_server.py:369）
+  每次调用前注入 datasource 元数据                    <em>(mcp_cm.py:110)</em>
+物化: SqlArtifactMiddleware.on_acting                  <em>(sql_artifact.py:56)</em>
+  GET /api/v1/cm/downloads/{id}.csv → artifacts/{session}/data/raw/{id}.csv
+  工具结果里的 download_url 改写成 file_path——模型看到的是本地文件</pre></div>
+<div class="sec"><div class="h">取数子流程</div><div class="steps">
+<div class="st in"><b>节点就绪</b><span>⑥ hint 点名取数节点</span></div>
+<span class="arw">→</span>
+<div class="st"><b>派 data_fetcher</b><span>角色受限工具箱</span></div>
+<span class="arw">→</span>
+<div class="st"><b>NL2SQL</b><span>⑧ 的 schema_prompt 约束生成</span></div>
+<span class="arw">→</span>
+<div class="st"><b>execute_sql</b><span>DataBridge 路由到物理源</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>CSV 落盘</b><span>登记 ArtifactItem</span></div>
+</div></div>
+<div class="say green"><b>子智能体隔离脏活：</b>海量工具输出不污染主对话上下文；进度以 ToolChunk 流回（带 subagent_trace 元数据），父智能体只拿结论与文件路径。</div>
+<div class="say"><b>SQL 不是裸猜：</b>NL2SQL 的语义上下文来自 ⑧ 的 schema_prompt（指标口径 / 维度 / 表列），fetch-data 技能自带提示词工程与二义性处理参考。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>agent/spawn_subagent.py:281,358</code> · <code>agent/middleware/sql_artifact.py:56</code> · <code>cm_sql_artifact.py:120</code> · <code>skills/workflows/fetch-data/</code></p></div>
+</div>`,
+
+"n8": `<div class="panel db">
+<h2>⑧ 语义检索（DataBridge search_context）<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">「有效用户指什么、GAAP 在哪张表、历史上怎么算过」全部从这条管线出来——一次调用返回带口径的 ContextPack，SSE 流式。</p>
+<div class="sec"><div class="h">检索管线（六步，默认 SSE 流式）</div>
+<svg class="flow" viewBox="0 0 910 235">
+<defs><marker id="m8x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/></marker></defs>
+<rect class="fbox dim" x="10" y="15" width="150" height="44" rx="7"/><text x="85" y="34" text-anchor="middle">输入问题 + 数据源</text><text x="85" y="51" text-anchor="middle" class="sub">POST /search_context</text>
+<path class="fl" d="M 160 37 H 185" marker-end="url(#m8x)"/>
+<rect class="fbox" x="190" y="15" width="205" height="44" rx="7"/><text x="292" y="34" text-anchor="middle" font-weight="bold">Step0 切分 + 别名扩展</text><text x="292" y="51" text-anchor="middle" class="sub">语义切分 · 实体扩展（2 并发 LLM）</text>
+<path class="fl" d="M 395 37 H 420" marker-end="url(#m8x)"/>
+<rect class="fbox" x="425" y="15" width="235" height="44" rx="7"/><text x="542" y="34" text-anchor="middle" font-weight="bold">Step1 锚点召回（hybrid）</text><text x="542" y="51" text-anchor="middle" class="sub">全文 CJK + 向量 ANN + RRF · 并发 rerank</text>
+<path class="fl" d="M 660 37 H 685" marker-end="url(#m8x)"/>
+<rect class="fbox" x="690" y="15" width="210" height="44" rx="7"/><text x="795" y="34" text-anchor="middle" font-weight="bold">Step2 策略卡召回</text><text x="795" y="51" text-anchor="middle" class="sub">strategy_vec ANN + 组合分 + 闸门</text>
+<path class="fl" d="M 795 59 V 75 H 110 V 90" marker-end="url(#m8x)"/>
+<rect class="fbox" x="10" y="94" width="200" height="50" rx="7"/><text x="110" y="113" text-anchor="middle" font-weight="bold">Step3 决策 LLM</text><text x="110" y="130" text-anchor="middle" class="sub">task_type · 复用卡 · 遍历路径</text>
+<path class="fl" d="M 210 119 H 235" marker-end="url(#m8x)"/>
+<rect class="fbox" x="240" y="94" width="205" height="50" rx="7"/><text x="342" y="113" text-anchor="middle" font-weight="bold">Step4 子图遍历</text><text x="342" y="130" text-anchor="middle" class="sub">两跳候选 ∪ 策略卡子图 ∪ BFS 兜底</text>
+<path class="fl" d="M 445 119 H 470" marker-end="url(#m8x)"/>
+<rect class="fbox" x="475" y="94" width="200" height="50" rx="7"/><text x="575" y="113" text-anchor="middle" font-weight="bold">Step5 expand_subgraph</text><text x="575" y="130" text-anchor="middle" class="sub">指标→公式→数据集→表→列（top-4）</text>
+<path class="fl" d="M 675 119 H 700" marker-end="url(#m8x)"/>
+<rect class="fbox hot" x="705" y="94" width="195" height="50" rx="7"/><text x="802" y="113" text-anchor="middle" font-weight="bold">Step6 组装 ContextPack</text><text x="802" y="130" text-anchor="middle" class="sub">MetricFocus + schema_prompt</text>
+<rect class="fbox dim" x="10" y="170" width="890" height="52" rx="7"/>
+<text x="455" y="190" text-anchor="middle" class="sub">调用方：⑤ 规划期（只读接地）与 ⑦ data_fetcher（NL2SQL 上下文）都走这条管线；execute_sql 走 /api/v1/cm/execute_sql 由物理源路由</text>
+<text x="455" y="208" text-anchor="middle" class="sub">三路消费面：MCP /mcp/v1/cm（Host 智能体）· HTTP API（集成方）· 管理界面（人）——读写同一份图</text>
+</svg></div>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">输入: POST /api/v1/cm/search_context
+      {"query": "分析产品X的有效用户平均GAAP值", "datasource_id": "ds_gaap"}
+输出 ContextPack:
+  SemanticsBlock: MetricBrief / DimensionBrief / ColumnBrief / TableBrief / KnowledgeSnippet
+  ExperienceBlock: CardBrief（历史策略卡）
+  shape_l1: MetricFocus（主指标 1-2 张全卡）+ MetricCandidate（备选）
+            + schema_prompt（喂 NL2SQL 的指标中心上下文）</pre></div>
+<div class="sec"><div class="h">指标怎么落到物理表列（expand_subgraph 的 Cypher 路径）</div>
+<pre class="data">Metric -[:HAS_FORMULA]-&gt; Formula -[:OF_VIEW]-&gt; Dataset -[:CONTAINS_TABLE]-&gt; Table
+Formula -[:USES_COLUMN]-&gt; Column                      <em>度量列</em>
+Metric  -[:ANALYZED_BY]-&gt; Dimension -[:MAPS_TO_COLUMN]-&gt; Column   <em>维度列</em>
+Metric  -[:HAS_CALIBER]-&gt; Caliber -[:FILTER_ON]-&gt; Column          <em>口径过滤</em>
+Metric  -[:DERIVED_FROM]-&gt; Metric                     <em>派生指标</em>
+<em>(api/retrieval.py:515-544 · 对 top-4 指标锚点展开)</em></pre></div>
+<div class="sec"><div class="h">业务术语怎么解析（两套互补机制）</div>
+<pre class="data">指标解析 resolve_metric (retrieval.py:252):
+  Lucene 全文(metric_text, CJK 分词) + 向量 ANN(met_vec) + RRF 融合
+  按 domain 与 datasource_id 过滤
+实体两段解析 (cm_resolve.py): infer_domain(会话锚定) → resolve_entity
+  精确名 +0.50 · 同义名 +0.40 · 唯一命中阈 0.55 · 歧义下限 0.30</pre></div>
+<div class="say warn"><b>LLM 只在两个位置参与：</b>Step0 的切分/扩展与 Step3 的选路——图遍历与展开是确定性 Cypher；决策错了路径会变，锚点本身不会错。</div>
+<div class="say green"><b>三图在这条管线合流：</b>知识图实体经 SURFACE_METRIC 扩成指标锚点、轨迹图 claim 有独立召回桶（claim_vec）、策略卡在 Step2 先行——「事实、知识、经验」一次取齐。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/cm_api.py:1403</code> · <code>api/ctx_pipeline.py:62-427</code> · <code>runtime/anchors.py</code> · <code>api/retrieval.py:252,494</code> · <code>api/ctx_assemble.py:247</code> · <code>api/l1_shape.py:33</code></p></div>
+</div>`,
+
+"n9": `<div class="panel sk">
+<h2>⑨ 分析执行（17 个原子技能）<span class="tag t-sk">Skill-Hub 原子层</span></h2>
+<p class="lead">每个分析动作是一个原子技能：SKILL.md 是规范、脚本优先——模型读规范、调脚本、不临场发明算法。</p>
+<div class="sec"><div class="h">典型分析链（BI 归因场景）</div><div class="steps">
+<div class="st in"><b>指标观察</b><span>bi-metric-observation 取值与趋势</span></div>
+<span class="arw">→</span>
+<div class="st bad"><b>异常检测</b><span>bi-anomaly-detection 判定异常日</span></div>
+<span class="arw">→</span>
+<div class="st"><b>维度下钻</b><span>bi-dimension-drilldown 定位维度</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>归因</b><span>贡献度 / 因果 / 时间影响三路</span></div>
+</div></div>
+<div class="sec"><div class="h">技能解剖：bi-anomaly-detection 的硬规矩</div>
+<pre class="data">执行步骤（SKILL.md 编号，不跳步）:
+  ① 数据准备（输入 CSV 的 schema 表 + 示例）
+  ② 选比对口径: 日环比 / 周同比 / 周环比 / 月环比
+  ③ 阈值优先链: 用户显式给值 &gt; 领域知识包 &gt; 语义层 API
+                &gt; 自适应计算(交给 bi-adaptive-threshold)
+  ④ 判定: 方法一 scripts/anomaly_detection.py（带完整参数表）
+          方法二 自实现——仅当脚本不适用
+Hub 级质量要求: SKILL 即规范 · 脚本优先 · 不编数字 · 产物必须落盘</pre></div>
+<div class="sec"><div class="h">原子技能清单（17 个，scripts/ 为确定性实现）</div>
+<pre class="data">观察/计算:  metric-observation · retention-rate · conversion-rate
+异常/阈值:  anomaly-detection · adaptive-threshold
+归因/下钻:  dimension-drilldown · attribution-analysis · causal-attribution
+            time-impact-attribution · new-dimension-analysis
+统计/画像:  funnel · comparison(显著性检验) · distribution · clustering(波士顿矩阵) · ltv
+产出:       report-generation · dashboard-generation</pre></div>
+<div class="say green"><b>归因不是纯数据活：</b>bi-causal-attribution 打分时，⑧ 供给知识事件与历史轨迹证据——「指标变化」才能连到「那次促销 / 那次版本发布」。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/atomic/bi-anomaly-detection/</code> · <code>skills/atomic/bi-attribution-analysis/scripts/contribution_calc.py</code> · 清单与调用链见 <code>skills/meta/skill-hub-guide/SKILL.md</code></p></div>
+</div>`,
+
+"n10": `<div class="panel sk">
+<h2>⑩ 报告生成（bi-report-generation）<span class="tag t-sk">Skill-Hub 原子层</span></h2>
+<p class="lead">产出决策可用的 HTML 报告：版式规范 + 模板 + 构建脚本 + 自检四件套，MASTER.md 硬性背书。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">输入: 各 DAG 节点产物（数据 CSV / 图表 / 结论）+ 来源链路
+构建: scripts/report_builder.py + resources/skeleton_template.html
+规范: references/layout-spec.md（版式硬约束）
+自检: 图表必须 echarts.init/setOption · 禁 &lt;img&gt; 贴图
+输出: artifacts/{session}/{graph}/{node}/report.html（ArtifactItem 登记）
+      结论→指标定义→取回数据→分析路径 全程可回溯</pre></div>
+<div class="say green"><b>可溯源是底线：</b>每个 headline 结论都能连回指标定义、取回数据与分析路径——由 ⑧ 的引用与会话轨迹共同保证，报告里不允许无出处的数。</div>
+<div class="say"><b>容错：</b>SQL 物化失败被就地隔离（0.3.1 修复），不拖垮整个回合的交付。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/atomic/bi-report-generation/</code>（SKILL.md · layout-spec.md · report_builder.py）· <code>prompts/MASTER.md</code></p></div>
+</div>`,
+
+"n11": `<div class="panel ui">
+<h2>⑪ 交付与追问<span class="tag t-ui">人机交互</span></h2>
+<p class="lead">结果以可重放 SSE 流交付：过程事件、计划快照、产物登记一路直播；回合结束自动推荐追问，定时任务闭环到下一轮。</p>
+<div class="sec"><div class="h">SSE 帧类型（object 判别）</div>
+<pre class="data">response        回合状态: created/in_progress/completed/failed/cancelled（终帧关流）
+message/content 文本 · 推理 · 工具调用与产出 · 媒体
+task_status     DAG 快照 graph_snapshot（计划可见、可编辑）
+artifact.registered  新产物登记（发现式 diff 也会发）
+followup.generated   追问推荐 · biz_event/segment 业务轨迹
+可靠性: Last-Event-ID / after_sequence_number 续播 · 15s 心跳 · 历史持久化(重启不丢)
+终态: Msg.metadata = {graph_id, completed, nodes, artifacts}
+CLI: Execution summary 打印 graph_id / 节点状态 / 产物路径</pre></div>
+<div class="sec"><div class="h">追问推荐怎么来</div><div class="steps">
+<div class="st in"><b>模型生成</b><span>按会话上下文起草</span></div>
+<span class="arw">→</span>
+<div class="st"><b>规则兜底</b><span>模型失败走确定性规则</span></div>
+<span class="arw">→</span>
+<div class="st"><b>实体接地</b><span>推荐问题锚定到图上实体</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>排序去重</b><span>相关性排序 · 历史问题去重</span></div>
+</div></div>
+<div class="say"><b>定时任务防重叠：</b>cron 到点先等会话空闲再开 console chat（0.3.1 修复），上一轮没跑完不会叠加下一轮。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/routers/events.py:31</code> · <code>stream/hub.py:12</code> · <code>runtime/envelope.py:40</code> · <code>chat_runtime.py:316</code> · <code>cli/util.py</code>（Execution summary）</p></div>
+</div>`,
+
+"n12": `<div class="panel db">
+<h2>⑫ 沉淀自演进（闭环）<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">任务不因报告交付而结束：轨迹入图、断言蒸馏、经验合成、反馈回写——下一次同类问题直接复用，资产越用越准。</p>
+<div class="sec"><div class="h">闭环流程（执行 → 入图 → 蒸馏 → 合成 → 复用）</div>
+<svg class="flow" viewBox="0 0 760 235">
+<defs><marker id="m12x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/></marker></defs>
+<rect class="fbox dim" x="10" y="15" width="200" height="44" rx="7"/><text x="110" y="34" text-anchor="middle" font-weight="bold">⑩⑪ 执行轨迹</text><text x="110" y="51" text-anchor="middle" class="sub">会话 JSONL 事件流</text>
+<path class="fl" d="M 110 59 V 85" marker-end="url(#m12x)"/>
+<rect class="fbox" x="10" y="89" width="200" height="44" rx="7"/><text x="110" y="108" text-anchor="middle" font-weight="bold">轨迹摄入 → 轨迹图</text><text x="110" y="125" text-anchor="middle" class="sub">Task / Step / ToolCall</text>
+<path class="fl" d="M 110 133 V 159" marker-end="url(#m12x)"/>
+<rect class="fbox" x="10" y="163" width="200" height="44" rx="7"/><text x="110" y="182" text-anchor="middle" font-weight="bold">claim 蒸馏</text><text x="110" y="199" text-anchor="middle" class="sub">LLM 提取 3-8 条断言</text>
+<path class="fl" d="M 210 185 H 310" marker-end="url(#m12x)"/>
+<rect class="fbox" x="315" y="163" width="200" height="44" rx="7"/><text x="415" y="182" text-anchor="middle" font-weight="bold">策略卡合成</text><text x="415" y="199" text-anchor="middle" class="sub">task_signature 找相似 → LLM</text>
+<path class="fl" d="M 415 163 V 137" marker-end="url(#m12x)"/>
+<rect class="fbox hot" x="315" y="89" width="200" height="44" rx="7"/><text x="415" y="108" text-anchor="middle" font-weight="bold">⑧ Step2 策略卡召回</text><text x="415" y="125" text-anchor="middle" class="sub">组合分召回 · 闸门过滤</text>
+<path class="fl" d="M 315 111 H 260 V 37 H 218" marker-end="url(#m12x)"/>
+<text x="238" y="30" text-anchor="middle" class="t-lbl">下次同类问题复用</text>
+<rect class="fbox dim" x="560" y="15" width="185" height="44" rx="7"/><text x="652" y="34" text-anchor="middle" font-weight="bold">record_outcome 反馈</text><text x="652" y="51" text-anchor="middle" class="sub">异步守护线程回写</text>
+<path class="fl" d="M 652 59 V 185 H 520" marker-end="url(#m12x)"/>
+<text x="585" y="140" class="t-lbl">卡命中 / 置信度 / 失效</text>
+<text x="10" y="226" class="t-lbl">闭环即复利：每答对一次，下次少一层猜测；settlement 确认的语义知识卡注入后续系统提示（长期记忆）</text>
+</svg></div>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">轨迹摄入: POST /api/v1/traces/ingest            <em>(api/trace_api.py:144)</em>
+  → ingest_qwenpaw_data_trace (graph/trace.py:1065)
+  结构: Task-[:DECOMPOSES_INTO{o}]-&gt;Step-[:EXECUTED_BY]-&gt;ToolCall
+  原始 JSONL 归档 OSS · 整会话快照 submit_trace 幂等写入
+断言蒸馏: 任务结束自动 LLM 提取 3-8 条 claim
+  ToolCall-[:PRODUCES]-&gt;Claim · 可跨图 RESOLVED_TO 指标/列
+经验合成: task_signature 找相似历史 → LLM 合成 Strategy 卡
+反馈回写: POST /api/v1/cm/record_outcome
+  信号 avoid/supersede/confirm/caveat/fail/success（可带 corrected_sql）
+  → writeback 守护线程异步执行，从不阻塞响应</pre></div>
+<div class="say green"><b>复利点：</b>策略卡下次在 ⑧ Step2 被召回（0.55·cos + 0.20·heat + 0.15·recency + 0.10·trust）；claim 有独立召回桶（claim_vec）——「上次怎么算的」变成检索信号。</div>
+<div class="say warn"><b>自动蒸馏是候选知识：</b>claim 之间、与既有定义的冲突要过 conflict 仲裁（detector/arbiter），不直接当真理；settlement 确认的语义知识卡才注入后续系统提示。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/trace_api.py:144,567</code> · <code>graph/trace.py:1065,1246</code> · <code>graph/trace_claim_distiller.py</code> · <code>graph/claim_strategy_synthesizer.py</code> · <code>runtime/writeback.py</code> · <code>agent/middleware/settlement.py:16</code></p></div>
+</div>`,
+
+"n13": `<div class="panel demo">
+<h2>⑬ 示例走读：GAAP 演示与冒烟测试<span class="tag t-demo">示例</span></h2>
+<p class="lead">examples/ 的 GAAP 演示把 ⓪–⑫ 完整走一遍；冒烟测试全程确定性（模型打桩），无模型 Key 也能验证整条管线。</p>
+<div class="sec"><div class="h">演示资产（实际数据）</div>
+<pre class="data">数据:    dws_gaap_di 475 行（合成 · 固定种子 · PostgreSQL/SQLite 双初始化）
+         2026-03-10 平均值尖刺 45.89（其余日约 3.6-4.6）
+业务口径: 有效用户 = YTD GAAP ≥ 10 USD
+配置:    demo_semantic_config.xlsx（语义配置 → 建图侧 B）
+         demo_kg_doc.docx（知识文档: 有效用户定义 + 尖刺解释事件 → 建图侧 C）
+问题:    "分析产品X的有效用户2026年3月平均GAAP值，展示趋势并解释最大尖刺"</pre></div>
+<div class="sec"><div class="h">冒烟测试 smoke_test.py（确定性全链路）</div><div class="steps">
+<div class="st in"><b>起桩</b><span>OpenAI 兼容模型桩: 第一轮强制调 execute_sql(DEMO_SQL)</span></div>
+<span class="arw">→</span>
+<div class="st"><b>起真服务</b><span>真 DataBridge API + 注册演示数据源</span></div>
+<span class="arw">→</span>
+<div class="st"><b>真 CLI</b><span>run --no-stream --workspace local --permission-mode bypass</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>断言</b><span>聚合值 03-01:4.64 · 03-10:45.89 · 03-15:3.62</span></div>
+</div></div>
+<div class="say green"><b>断言即契约：</b>最终回复必须含 QWENPAW_DATA_DEMO_SMOKE_OK，且会话轨迹 JSON 落盘——模型行为被桩固定，验证的是管线本身而非模型运气。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>examples/init_demo.py</code> · <code>examples/smoke_test.py</code> · <code>examples/demo/</code>（init.sql · semantic_smoke_test.py）</p></div>
+</div>`,
+
+/* ───────────────────────── 建图侧：事实与方法资产怎么建好 ───────────────────────── */
+
+"w0": `<div class="panel db">
+<h2>A · 源适配 → 物理图<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">连上库就能进图：适配器把库表结构抽成统一清单，写入物理图，再用三步启发式推断表间 JOIN。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">POST /api/v1/connect → run_import                  <em>(graph/import_runner.py:44)</em>
+  get_adapter: postgres / mysql / sqlite / duckdb / bigquery
+               / odps / csv / ddl / universal       <em>(graph/adapters/registry.py)</em>
+  adapter.extract_metadata()
+    → PhysicalManifest {db_id, schema, tables, columns, fks}
+    → ingest_from_manifest 写物理图
+       Database-[:HAS_SCHEMA]-&gt;Schema-[:HAS_TABLE]-&gt;Table-[:HAS_COLUMN]-&gt;Column
+  → write_join_inference 补 JOINS_ON 边
+异步: /connect/status/{task_id} 查任务进度 · ImportResult 带统计与错误</pre></div>
+<div class="sec"><div class="h">JOIN 推断三步（置信度递减）</div><div class="steps">
+<div class="st in"><b>profile 提示</b><span>外键样例提示 conf 0.7</span></div>
+<span class="arw">→</span>
+<div class="st"><b>id 型正则</b><span>列名像主键/外键 conf 0.6</span></div>
+<span class="arw">→</span>
+<div class="st"><b>样例 Jaccard</b><span>sample_values 重合度</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>人工覆盖</b><span>显式声明 conf 1.0</span></div>
+</div></div>
+<div class="say"><b>离线全量路径：</b>TopologyRunner 按固定顺序跑七步（init → 物理 → join → 语义 → 知识 → 文档 → 轨迹，runner.py:64）——connect API 是它的在线单源版本。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>graph/import_runner.py:44,113</code> · <code>graph/adapters/base.py:16</code> · <code>graph/physical.py:1</code> · <code>graph/joins.py:1</code> · <code>graph/runner.py:64</code></p></div>
+</div>`,
+
+"w1": `<div class="panel db">
+<h2>B · 语义建模 → 语义图（weave）<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">语义配置先在 SQLite 编辑层慢慢改，weave 一次性织入 Neo4j 语义图——编辑与生效分离，织入是整数据源粒度。</p>
+<div class="sec"><div class="h">两段式流程（实际数据）</div>
+<pre class="data">编辑层(SQLite semantic_config.db · 前端 CRUD):
+  datasource → biz_domain → dataset_meta/dataset_column_meta
+  → dimension/values/caliber 绑定 → metric_lib → metric_formula_lib
+  批量: Excel 导入（demo_semantic_config.xlsx 同款格式）
+织入: POST /api/semantic-config/weave-task/submit
+  weave_assembler.assemble(读全部编辑表)            <em>(weave_assembler.py:69)</em>
+  → run_semantic_import("metrics_dict", trust 0.9)
+    可选先 drop_semantic_for_datasource 整体重织
+  → index_embeddings 建 met_vec/dim_vec/col_vec/ds_vec 索引</pre></div>
+<div class="sec"><div class="h">语义图长什么样（metrics_dict 写入顺序）</div>
+<pre class="data">Domain ─HAS_METRIC→ Metric(带 aliases 供全文检索)
+Metric ─HAS_FORMULA→ Formula ─OF_VIEW→ Dataset ─CONTAINS_TABLE→ Table
+Formula ─USES_COLUMN→ Column / DatasetColumn        <em>度量列绑定</em>
+Metric ─ANALYZED_BY→ Dimension ─MAPS_TO_COLUMN→ Column   <em>维度绑定</em>
+Metric ─HAS_CALIBER→ Caliber ─FILTER_ON→ Column     <em>口径过滤</em>
+Metric ─DERIVED_FROM→ Metric                        <em>派生关系</em></pre></div>
+<div class="say warn"><b>双来源靠 trust 分层：</b>schema_auto（零 LLM 从 DDL 推导: 表名分域 / 文本列推维度 / 数值列推指标代理）source_trust=0.4 只做占位；人工织入 metrics_dict trust=0.9 永远优先——自动推导不覆盖人工口径。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>semantic_config/services/weave_assembler.py:69</code> · <code>graph/semantic_import_service.py:225,363</code> · <code>graph/semantic_auto.py:1</code> · <code>graph/semantic.py:1</code> · <code>graph/embeddings.py</code></p></div>
+</div>`,
+
+"w2": `<div class="panel db">
+<h2>C · 知识抽取 → 知识图<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">业务文档变实体与事件：三遍 LLM 管线（抽取→归一→聚类），外加结构化外部事件表，跨图挂到指标上。</p>
+<div class="sec"><div class="h">三遍管线（实际流程）</div><div class="steps">
+<div class="st in"><b>上传分块</b><span>txt/docx/pdf/md → chunk_merged_txt</span></div>
+<span class="arw">→</span>
+<div class="st"><b>Pass A 抽取</b><span>逐块抽实体/事件候选</span></div>
+<span class="arw">→</span>
+<div class="st"><b>Pass B 归一</b><span>跨块合并同义实体</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>Pass C 聚类</b><span>批量聚类 → Entity/Event 写图 + md 报告</span></div>
+</div></div>
+<div class="sec"><div class="h">图结构与外部事件</div>
+<pre class="data">节点: Entity(zone=_shared 跨图共享) · Event(zone=knowledge)
+边:   Event-[:ABOUT]→Entity · Entity-[:RELATED_TO]→Entity(双向)
+      Entity-[:SURFACE_METRIC]→Metric   <em>← ⑧ 锚点召回的扩展通道</em>
+外部事件: external_events.yaml(节假日/版本发布/促销/故障)
+位置: POST /api/v1/docs/upload(doc_api.py:50) → knowledge/pipeline.py</pre></div>
+<div class="say green"><b>演示闭环的一环：</b>demo_kg_doc.docx 里「有效用户定义 + 3-10 尖刺解释事件」就是走这条管线进图的——⑨ 因果归因能连上业务事件全靠它。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>knowledge/pipeline.py</code> · <code>graph/knowledge.py:1</code> · <code>api/doc_api.py:50</code></p></div>
+</div>`,
+
+"w3": `<div class="panel db">
+<h2>D · 轨迹沉淀 → 轨迹图<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">运行侧 ⑫ 的写入端：会话轨迹 JSONL 解析成 Task→Step→ToolCall 全链，可自动蒸馏 claim——建图侧与运行侧在这里接上。</p>
+<div class="sec"><div class="h">两条写入路径（实际数据）</div>
+<pre class="data">逐事件: POST /api/v1/traces/ingest                 <em>(api/trace_api.py:144)</em>
+  → ingest_qwenpaw_data_trace: 解析 JSONL 事件 → 写 Task/Step/ToolCall
+  原始 JSONL 归档 OSS · /ingest_file 按 qid 分组批量
+整会话: POST /api/v1/trace/submit_trace            <em>(api/trace_api.py:567)</em>
+  → ingest_host_trace: Host 会话快照幂等写入（重放不重复）
+图结构: Task-[:DECOMPOSES_INTO{order}]→Step · Step-[:NEXT]→Step
+  Step-[:EXECUTED_BY]→ToolCall(observations 数组属性)
+  ToolCall-[:PRODUCES]→Claim · Turn-[:SPAWNS]→Task
+  Experience-[:DERIVED_FROM]→Task · Claim-[:RESOLVED_TO]→Metric/Column
+  Claim|Observation-[:EVIDENCED_BY]→Event|Entity     <em>← 与知识图互证</em></pre></div>
+<div class="say"><b>经验可回放：</b>recall_success_traces / recall_failed_plans 按结构召回历史成功轨迹与失败计划——「上次这么做成过」本身就是证据。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/trace_api.py:144,567</code> · <code>graph/trace.py:1065,1715</code> · <code>graph/host_trace_parser.py</code></p></div>
+</div>`,
+
+"w4": `<div class="panel db">
+<h2>E · 三图一体：一个 Neo4j，zone 分区<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">三张图不是三个库——同一 Neo4j 实例用节点 zone 属性分区，跨图边是一等公民，检索时一次遍历串起事实、知识与轨迹。</p>
+<div class="sec"><div class="h">存储布局（实际结构）</div>
+<pre class="data">zone 常量(graph/keys.py:26): metadata / trace / knowledge / _shared
+schema_init.init_all(:318):
+  标签 + 唯一约束(:33) · 全文 CJK 索引(:71) · 向量索引(:89)
+  · btree(:105) · zone 索引(:271)
+向量索引 9 个: met_vec / dim_vec / col_vec / ds_vec / dscol_vec
+               / strategy_vec / ev_vec / ent_vec / claim_vec
+全文索引:      metric_text / dim_text / col_text / event_text / strategy_text…
+多租户 key(keys.py:76): tbl:&lt;ds&gt;:&lt;db&gt;.&lt;schema&gt;.&lt;table&gt;
+                        met:&lt;ds&gt;:&lt;domain&gt;:&lt;name&gt;   <em>← 全部带 datasource_id 前缀</em></pre></div>
+<div class="sec"><div class="h">跨图边——三图一体的价值所在</div>
+<pre class="data">Entity -[:SURFACE_METRIC]→   Metric      知识→元数据: 实体命中扩成指标锚点
+Claim  -[:RESOLVED_TO]→     Metric/Col   轨迹→元数据: 历史断言锚定到口径
+Claim  -[:EVIDENCED_BY]→    Event/Entity 轨迹↔知识: 结论与业务事件互证</pre></div>
+<div class="say"><b>编辑层与图分离：</b>SQLite 只存「还没织入的编辑」，Neo4j 是生效事实；重织 = drop + 重建该数据源语义分区，物理/知识/轨迹不受影响。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>graph/keys.py:26,76</code> · <code>graph/schema_init.py:33,71,89,318</code></p></div>
+</div>`,
+
+"w5": `<div class="panel db">
+<h2>F · 图记忆治理<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">经验会老化、会冲突：策略卡有热温冷分层与置信度演化，跨图断言要过冲突仲裁——图记忆是被治理的资产，不是垃圾堆。</p>
+<div class="sec"><div class="h">治理机制（实际参数）</div>
+<pre class="data">策略卡召回组合分(graph/strategy_card.py:56):
+  0.55·cos + 0.20·heat + 0.15·recency + 0.10·trust
+分层: MemoryTierScheduler 热/温/冷状态机(:7)
+置信度: update_strategy_confidence_from_execution 按执行反馈演化
+冲突: conflict/(detector · arbiter · queue · screener
+       + kg/mg/tg 三图适配器)——跨图矛盾先检测后仲裁
+回写: record_outcome → writeback 守护线程
+  (卡命中记数 · 置信度更新 · claim 失效) · 从不阻塞响应</pre></div>
+<div class="say warn"><b>不治理的图记忆会反噬检索：</b>过时策略卡分数虚高会在 ⑧ Step2 挤掉正确候选——热度的 0.20 权重让「最近被用过且成功」的卡浮上来，失败信号（avoid/fail）压置信度。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>graph/strategy_card.py:7,56</code> · <code>runtime/writeback.py</code> · <code>conflict/</code> · <code>graph/trace.py:1460,1493</code></p></div>
+</div>`,
+
+"w6": `<div class="panel db">
+<h2>G · DataBridge 管理界面<span class="tag t-db">DataBridge</span></h2>
+<p class="lead">本地管理 UI（前端 Vite:3000 / API:8765）：从数据源登记、语义配置、织入到图浏览一站式，全部能力另有 admin API。</p>
+<div class="sec"><div class="h">前端页面（frontend/src/pages/）</div>
+<pre class="data">数据接入: DataSourceManagement · DataConnection
+语义建模: BusinessDomainManagement · DatasetManagement · ColumnManagement
+          DimensionManagement · DimensionValueManagement
+          DimensionCaliberManagement · MetricLib · MetricFormulaLib
+批量与织入: ExcelImport · SemanticWeaving
+知识与图:  KGDocs(文档抽取) · CMGraph(图浏览) · ModelConfig</pre></div>
+<div class="sec"><div class="h">服务端 API 面</div>
+<pre class="data">FastAPI(api/server.py:506 · 路由挂载 :697-727):
+  cm(L1/L2/L3 检索) · semantic(配置 CRUD) · import/connect · docs
+  traces · kg_admin / tg_admin / mg_readonly · explorer · cypher
+图浏览: /api/global_graph · domain_graph · search_nodes · expand_node…
+管理:   /api/v1/admin/kg|mg|tg/* · 裸 Cypher 查询(cypher_api.py:395)
+认证:   Bearer token（QWENPAW_DATA_API_TOKEN 或 scope key）</pre></div>
+<div class="say"><b>同一套能力的三个消费面：</b>管理 UI（人）、MCP /mcp/v1/cm（Host 智能体）、HTTP API（集成方）——读写的是同一份图。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/server.py:506,697</code> · <code>frontend/src/pages/</code> · <code>api/kg_admin_api.py:26</code> · <code>api/cypher_api.py:395</code></p></div>
+</div>`,
+
+"w7": `<div class="panel sk">
+<h2>H · 技能资产：Skill-Hub 31 技能<span class="tag t-sk">Skill-Hub</span></h2>
+<p class="lead">方法不是提示词玄学，是带规范/脚本/质量要求的资产包——七层分工，从路由到原子操作全谱系。</p>
+<div class="sec"><div class="h">七层清单（skills/ 目录实数）</div>
+<table class="mini">
+<tr><th>层</th><th>数量</th><th>代表技能</th></tr>
+<tr><td>L0 路由</td><td>1</td><td>data-intent-router</td></tr>
+<tr><td>L1 规划</td><td>1</td><td>analysis-plan-builder（BI 类型指南 · tob/toc/tod 领域包）</td></tr>
+<tr><td>工作流</td><td>7</td><td>fetch-data(NL2SQL) · bi-metric-analysis · retention · conversion · cohort · data-modeling · data-science-analysis</td></tr>
+<tr><td>原子</td><td>17</td><td>异常检测 · 维度下钻 · 贡献/因果/时间归因 · 漏斗 · 聚类 · LTV · 报告 · 看板…</td></tr>
+<tr><td>领域</td><td>1</td><td>query-odps（MaxCompute SQL 纪律）</td></tr>
+<tr><td>运行时</td><td>3</td><td>runtime-guide(产物落盘/复用/错误处理) · bi-semantic-layer-guide · interaction-strategy</td></tr>
+<tr><td>元</td><td>1</td><td>skill-hub-guide（必读入口 · 各层调用链）</td></tr>
+</table></div>
+<div class="sec"><div class="h">技能解剖（一个技能 = 四件套）</div>
+<pre class="data">bi-anomaly-detection/
+├─ SKILL.md        YAML frontmatter(触发条件) + 编号执行步骤
+├─ scripts/        anomaly_detection.py（确定性实现 · 参数表 · 输出格式）
+├─ references/     口径与领域知识
+└─ (可选) resources/ 模板资源
+Hub 级质量规矩: SKILL 即规范不跳步 · 脚本优先不重造
+              · 参数优先级 · 不编数字 · 产物必须落盘</pre></div>
+<div class="say green"><b>方法资产的复利：</b>技能修一次（比如阈值链补一档），所有走它的分析同时受益——这是「如何分析」沉淀为资产的含义。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-skills/skills/</code>（七层目录）· <code>skills/meta/skill-hub-guide/SKILL.md</code> · 仓库根 <code>skills/qwenpaw-data-cli/SKILL.md</code>（教外部智能体驱动 CLI）</p></div>
+</div>`
+};
+
+const RUN_SVG = `<g class="nd" id="n0" onclick="pick('n0')"><rect x="30" y="24" width="132" height="56" rx="8"/><text x="96" y="45" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⓪ 请求入口</text><text x="96" y="63" text-anchor="middle" font-size="11.5" fill="#66757f">CLI / API / 定时 / App</text></g>
+<g class="nd" id="n1" onclick="pick('n1')"><rect x="186" y="24" width="132" height="56" rx="8"/><text x="252" y="45" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">① 会话编排</text><text x="252" y="63" text-anchor="middle" font-size="11.5" fill="#66757f">ChatRuntime 一回合</text></g>
+<g class="nd" id="n2" onclick="pick('n2')"><rect x="342" y="24" width="140" height="56" rx="8"/><text x="412" y="45" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">② 智能体构建</text><text x="412" y="63" text-anchor="middle" font-size="11.5" fill="#66757f">工作区·工具箱·技能</text></g>
+<g class="nd ui" id="n3" onclick="pick('n3')"><rect x="508" y="24" width="140" height="56" rx="8"/><text x="578" y="45" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">③ 澄清与干预</text><text x="578" y="63" text-anchor="middle" font-size="11.5" fill="#66757f">问用户·插话·改计划</text></g>
+<g class="nd demo" id="n13" onclick="pick('n13')"><rect x="1030" y="24" width="210" height="100" rx="8"/><text x="1135" y="45" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⑬ 示例走读</text><text x="1135" y="64" text-anchor="middle" font-size="11" fill="#66757f">examples/ GAAP 演示</text><text x="1135" y="81" text-anchor="middle" font-size="11" fill="#66757f">475 行 · 03-10 尖刺 45.89</text><text x="1135" y="98" text-anchor="middle" font-size="11" fill="#66757f">冒烟测试全链确定性</text></g>
+<g class="nd sk" id="n4" onclick="pick('n4')"><rect x="342" y="120" width="140" height="56" rx="8"/><text x="412" y="141" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">④ 意图路由</text><text x="412" y="159" text-anchor="middle" font-size="11.5" fill="#66757f">data-intent-router</text></g>
+<g class="nd sk" id="n5" onclick="pick('n5')"><rect x="342" y="204" width="140" height="64" rx="8"/><text x="412" y="226" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⑤ 任务规划</text><text x="412" y="244" text-anchor="middle" font-size="11.5" fill="#66757f">create_plan → DAG</text><text x="412" y="260" text-anchor="middle" font-size="11" fill="#66757f">语义层接地</text></g>
+<g class="nd" id="n6" onclick="pick('n6')"><rect x="342" y="296" width="140" height="64" rx="8"/><text x="412" y="318" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⑥ DAG 执行循环</text><text x="412" y="336" text-anchor="middle" font-size="11.5" fill="#66757f">hint 驱动·一次一节点</text><text x="412" y="352" text-anchor="middle" font-size="11" fill="#66757f">产物登记 ArtifactItem</text></g>
+<g class="nd db" id="n8" onclick="pick('n8')"><rect x="30" y="204" width="260" height="110" rx="8"/><text x="160" y="228" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">⑧ 语义检索（DataBridge）</text><text x="160" y="248" text-anchor="middle" font-size="11.5" fill="#66757f">search_context 管线</text><text x="160" y="266" text-anchor="middle" font-size="11" fill="#66757f">锚点召回→决策→子图遍历</text><text x="160" y="284" text-anchor="middle" font-size="11" fill="#66757f">→ ContextPack · execute_sql</text></g>
+<g class="nd sk" id="n7" onclick="pick('n7')"><rect x="560" y="204" width="150" height="64" rx="8"/><text x="635" y="226" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⑦ 数据获取</text><text x="635" y="244" text-anchor="middle" font-size="11.5" fill="#66757f">fetch-data · 子智能体</text><text x="635" y="260" text-anchor="middle" font-size="11" fill="#66757f">SQL→CSV 产物</text></g>
+<g class="nd sk" id="n9" onclick="pick('n9')"><rect x="560" y="296" width="150" height="64" rx="8"/><text x="635" y="318" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⑨ 分析执行</text><text x="635" y="336" text-anchor="middle" font-size="11.5" fill="#66757f">17 个原子技能</text><text x="635" y="352" text-anchor="middle" font-size="11" fill="#66757f">脚本优先·不编数字</text></g>
+<g class="nd sk" id="n10" onclick="pick('n10')"><rect x="560" y="388" width="150" height="64" rx="8"/><text x="635" y="410" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⑩ 报告生成</text><text x="635" y="428" text-anchor="middle" font-size="11.5" fill="#66757f">bi-report-generation</text><text x="635" y="444" text-anchor="middle" font-size="11" fill="#66757f">HTML 版式自检</text></g>
+<g class="nd ui" id="n11" onclick="pick('n11')"><rect x="770" y="296" width="150" height="64" rx="8"/><text x="845" y="318" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#22333d">⑪ 交付与追问</text><text x="845" y="336" text-anchor="middle" font-size="11.5" fill="#66757f">SSE 可重放直播</text><text x="845" y="352" text-anchor="middle" font-size="11" fill="#66757f">followup 推荐</text></g>
+<g class="nd db" id="n12" onclick="pick('n12')"><rect x="770" y="388" width="150" height="64" rx="8"/><text x="845" y="410" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">⑫ 沉淀自演进</text><text x="845" y="428" text-anchor="middle" font-size="11.5" fill="#66757f">轨迹→claim→策略卡</text><text x="845" y="444" text-anchor="middle" font-size="11" fill="#66757f">反馈回写图记忆</text></g>
+<path class="ln" d="M 162 52 H 186"/>
+<path class="ln" d="M 318 52 H 342"/>
+<path class="ln" d="M 412 80 V 120"/>
+<path class="ln side" d="M 578 80 V 190 H 412 V 204"/>
+<text x="497" y="184" text-anchor="middle" font-size="11" fill="#8b9aa4">缺信息→问用户 · 中途 steering</text>
+<path class="ln" d="M 412 176 V 204"/>
+<path class="ln" d="M 412 268 V 296"/>
+<path class="ln" d="M 482 328 H 530 V 222 H 560"/>
+<text x="521" y="281" text-anchor="middle" font-size="10.5" fill="#8b9aa4">逐节点</text>
+<path class="ln" d="M 635 268 V 296"/>
+<text x="635" y="286" text-anchor="middle" font-size="10.5" fill="#8b9aa4">（DAG 内节点，顺序由计划决定）</text>
+<path class="ln" d="M 635 360 V 388"/>
+<path class="ln" d="M 710 420 H 740 V 328 H 770"/>
+<path class="ln" d="M 845 360 V 388"/>
+<path class="ln db" d="M 290 236 H 342"/>
+<text x="316" y="229" text-anchor="middle" font-size="10.5" fill="#4f9f6f">规划接地</text>
+<path class="ln db" d="M 290 280 H 512 V 250 H 560"/>
+<text x="400" y="293" text-anchor="middle" font-size="10.5" fill="#4f9f6f">术语/指标接地 · execute_sql</text>
+<path class="ln db" d="M 200 314 V 420 H 545 V 328 H 560"/>
+<text x="360" y="413" text-anchor="middle" font-size="10.5" fill="#4f9f6f">归因证据（事件 / 历史轨迹）</text>
+<path class="ln db" d="M 845 452 V 490 H 120 V 314"/>
+<text x="480" y="483" text-anchor="middle" font-size="10.5" fill="#4f9f6f">轨迹 / 经验反哺图记忆（自演进闭环）</text>
+<g transform="translate(30,505)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#f4f8fb" stroke="#8fa8bd"/><text x="19" y="11" font-size="12" fill="#5a6b76">Host 执行控制</text><rect x="105" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="124" y="11" font-size="12" fill="#5a6b76">Skill-Hub 方法</text><rect x="225" y="0" width="13" height="13" rx="3" fill="#eaf7ef" stroke="#5aa877"/><text x="244" y="11" font-size="12" fill="#5a6b76">DataBridge 事实</text><rect x="350" y="0" width="13" height="13" rx="3" fill="#f0eaf7" stroke="#a184c4"/><text x="369" y="11" font-size="12" fill="#5a6b76">人机交互</text><rect x="445" y="0" width="13" height="13" rx="3" fill="#f6f5f1" stroke="#b3ab96"/><text x="464" y="11" font-size="12" fill="#5a6b76">示例注记</text><text x="530" y="11" font-size="12" fill="#8b9aa4">虚线绿 = DataBridge 服务调用与经验反哺</text></g>
+<text x="30" y="536" font-size="12" fill="#8b9aa4">闭环：⑫ 的轨迹与经验写回图记忆 → 下次同类问题经 ⑧ 直接复用（策略卡/claim 召回）——「事实 × 方法 × 执行」三子系统在一条请求里合拢</text>`;
+
+const BUILD_SVG = `<text x="885" y="16" text-anchor="middle" font-size="11" fill="#8b9aa4">输入来自运行侧 ⑫（轨迹 JSONL · record_outcome）</text>
+<g class="nd db" id="w0" onclick="pick('w0')"><rect x="30" y="24" width="210" height="76" rx="8"/><text x="135" y="48" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">A 源适配 → 物理图</text><text x="135" y="67" text-anchor="middle" font-size="11" fill="#66757f">9 类适配器 → PhysicalManifest</text><text x="135" y="84" text-anchor="middle" font-size="11" fill="#66757f">join 三步推断 JOINS_ON</text></g>
+<g class="nd db" id="w1" onclick="pick('w1')"><rect x="280" y="24" width="210" height="76" rx="8"/><text x="385" y="48" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">B 语义建模 → 语义图</text><text x="385" y="67" text-anchor="middle" font-size="11" fill="#66757f">编辑层(SQLite)→weave 织入</text><text x="385" y="84" text-anchor="middle" font-size="11" fill="#66757f">schema_auto 零LLM 兜底</text></g>
+<g class="nd db" id="w2" onclick="pick('w2')"><rect x="530" y="24" width="210" height="76" rx="8"/><text x="635" y="48" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">C 知识抽取 → 知识图</text><text x="635" y="67" text-anchor="middle" font-size="11" fill="#66757f">文档三遍 LLM 管线</text><text x="635" y="84" text-anchor="middle" font-size="11" fill="#66757f">实体/事件 + 外部事件表</text></g>
+<g class="nd db" id="w3" onclick="pick('w3')"><rect x="780" y="24" width="210" height="76" rx="8"/><text x="885" y="48" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">D 轨迹沉淀 → 轨迹图</text><text x="885" y="67" text-anchor="middle" font-size="11" fill="#66757f">JSONL→Task/Step/ToolCall</text><text x="885" y="84" text-anchor="middle" font-size="11" fill="#66757f">claim 蒸馏 · 策略合成</text></g>
+<g class="nd db" id="w4" onclick="pick('w4')"><rect x="380" y="170" width="320" height="70" rx="8"/><text x="540" y="192" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">E 三图一体：一个 Neo4j · zone 分区</text><text x="540" y="210" text-anchor="middle" font-size="11" fill="#66757f">向量 9 索引 + 全文 CJK 索引 · 多租户 key</text><text x="540" y="228" text-anchor="middle" font-size="11" fill="#66757f">跨图边: SURFACE_METRIC / RESOLVED_TO / EVIDENCED_BY</text></g>
+<g class="nd db" id="w5" onclick="pick('w5')"><rect x="380" y="290" width="320" height="70" rx="8"/><text x="540" y="312" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">F 图记忆治理</text><text x="540" y="330" text-anchor="middle" font-size="11" fill="#66757f">策略卡热温冷 · 置信度随执行更新</text><text x="540" y="348" text-anchor="middle" font-size="11" fill="#66757f">冲突仲裁 · record_outcome 异步回写</text></g>
+<g class="nd db" id="w6" onclick="pick('w6')"><rect x="780" y="170" width="210" height="70" rx="8"/><text x="885" y="192" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a4a33">G 管理界面 DataBridge UI</text><text x="885" y="210" text-anchor="middle" font-size="11" fill="#66757f">15 个管理页面</text><text x="885" y="228" text-anchor="middle" font-size="11" fill="#66757f">admin API · 图浏览 · Cypher</text></g>
+<g class="nd sk" id="w7" onclick="pick('w7')"><rect x="30" y="170" width="210" height="120" rx="8"/><text x="135" y="194" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#7a5a10">H 技能资产 Skill-Hub</text><text x="135" y="213" text-anchor="middle" font-size="11" fill="#66757f">31 技能 · 七层分工</text><text x="135" y="230" text-anchor="middle" font-size="11" fill="#66757f">SKILL.md 规范 + scripts</text><text x="135" y="247" text-anchor="middle" font-size="11" fill="#66757f">+ references + 模板</text><text x="135" y="264" text-anchor="middle" font-size="11" fill="#66757f">脚本优先 · 不编数字</text></g>
+<path class="ln" d="M 135 100 V 140 H 430 V 170"/>
+<path class="ln" d="M 385 100 V 170"/>
+<path class="ln" d="M 635 100 V 170"/>
+<path class="ln" d="M 885 100 V 140 H 660 V 170"/>
+<path class="ln" d="M 540 240 V 290"/>
+<path class="ln db" d="M 700 205 H 780"/>
+<text x="885" y="262" text-anchor="middle" font-size="11" fill="#8b9aa4">运行侧经 MCP /mcp/v1/cm 消费（→ 运行侧 ⑧）</text>
+<text x="135" y="302" text-anchor="middle" font-size="11" fill="#8b9aa4">Host 运行时挂载（→ 运行侧 ②）</text>
+<g transform="translate(30,395)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#eaf7ef" stroke="#5aa877"/><text x="19" y="11" font-size="12" fill="#5a6b76">DataBridge 事实资产</text><rect x="155" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="174" y="11" font-size="12" fill="#5a6b76">Skill-Hub 方法资产</text><text x="295" y="11" font-size="12" fill="#8b9aa4">虚线绿 = 管理与消费边界</text></g>
+<text x="30" y="428" font-size="12" fill="#8b9aa4">四条构建管线写入同一个 Neo4j（zone 分区）；示例资产 examples/ 提供演示数据源 · 语义配置工作簿（喂 B）· 知识文档（喂 C）</text>`;
+
+let curTab = 'run';
+
+const DEFS = '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
+  + 'markerHeight="6" orient="auto-start-reverse">'
+  + '<path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/></marker>'
+  + '<marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
+  + 'markerHeight="6" orient="auto-start-reverse">'
+  + '<path d="M 0 0 L 10 5 L 0 10 z" fill="#7fbf8f"/></marker>';
+
+function renderMap(){
+  document.getElementById('map').innerHTML =
+    '<defs>' + DEFS + '</defs>' + (curTab === 'run' ? RUN_SVG : BUILD_SVG);
+  document.getElementById('map').setAttribute('viewBox',
+    curTab === 'run' ? '0 0 1280 545' : '0 0 1280 445');
+}
+
+function switchTab(tab){
+  curTab = tab;
+  document.getElementById('tab-run').className   = tab === 'run'   ? 'on' : '';
+  document.getElementById('tab-build').className = tab === 'build' ? 'on' : '';
+  renderMap();
+  document.getElementById('hint').textContent = '点击图中任意方块，展开它内部的子流程、输入输出数据结构与代码位置';
+  document.getElementById('detail').innerHTML = '';
+}
+
+function pick(id){
+  if(!NODES[id]) return;
+  document.querySelectorAll('.nd').forEach(function(n){ n.classList.remove('sel'); });
+  const el = document.getElementById(id);
+  if(el) el.classList.add('sel');
+  document.getElementById('detail').innerHTML = NODES[id];
+  const t = el ? el.querySelector('text').textContent : id;
+  document.getElementById('hint').textContent = '当前在看：' + t;
+  document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+document.addEventListener('DOMContentLoaded', function(){ switchTab('run'); });
+</script>
+</body>
+</html>
