@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QwenPaw-Data 意图识别流程（可下钻）</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; font-size: 14px; line-height: 1.7;
+         color: #233; margin: 0; background: #fbfcfd; padding: 0 0 60px; }
+  h1 { font-size: 20px; text-align: center; margin: 20px 0 4px; }
+  .sub { text-align: center; color: #78868e; font-size: 13px; margin-bottom: 14px; }
+
+  .tabs { display: flex; justify-content: center; gap: 8px; margin: 0 0 12px; }
+  .tabs button { font: inherit; font-size: 13.5px; padding: 6px 18px; border: 1px solid #b9c4cc;
+                 background: #fff; color: #456; border-radius: 20px; cursor: pointer; }
+  .tabs button:hover { background: #eef3f7; }
+  .tabs button.on { background: #3d6b8f; color: #fff; border-color: #3d6b8f; }
+
+  .mapwrap { max-width: 1240px; margin: 0 auto; padding: 0 10px; }
+  svg.main { width: 100%; height: auto; display: block; background: #fff;
+             border: 1px solid #dbe2e7; border-radius: 10px; }
+
+  .nd rect { fill: #f4f8fb; stroke: #8fa8bd; stroke-width: 1.2px; cursor: pointer; transition: all .12s; }
+  .nd text { cursor: pointer; pointer-events: none; }
+  .nd:hover rect { fill: #e3eef7; stroke: #3d6b8f; stroke-width: 1.8px; }
+  .nd.sel rect { fill: #dbe9f5; stroke: #2b5773; stroke-width: 2.4px; }
+  .nd.tool rect { fill: #eaf7ef; stroke: #5aa877; }
+  .nd.gate rect { fill: #fdf4e5; stroke: #c99a30; }
+  .nd.art rect  { fill: #fdf0f1; stroke: #cf6a7a; }
+  .nd.host rect { fill: #f2f3f5; stroke: #a9b2ba; }
+  .nd.tool:hover rect { fill: #d8f0e2; }
+  .nd.gate:hover rect { fill: #faeacd; }
+  .nd.art:hover rect  { fill: #fbe1e4; }
+  .nd.host:hover rect { fill: #e7eaee; }
+
+  path.ln { fill: none; stroke: #93a5b3; stroke-width: 1.5px; marker-end: url(#ah); }
+  path.ln.side { stroke: #b3c0ca; stroke-dasharray: 5 3; }
+  path.bus { fill: none; stroke: #93a5b3; stroke-width: 1.5px; }
+  .lbl { font-size: 12px; fill: #6b7c88; }
+
+  .detail { max-width: 1240px; margin: 16px auto 0; padding: 0 10px; }
+  .panel { background: #fff; border: 1px solid #dbe2e7; border-left: 5px solid #3d6b8f;
+           border-radius: 10px; padding: 16px 20px 18px; }
+  .panel.tool { border-left-color: #4f9f6f; }
+  .panel.gate { border-left-color: #c99a30; }
+  .panel.art  { border-left-color: #cf6a7a; }
+  .panel.host { border-left-color: #8a97a3; }
+  .panel h2 { margin: 0 0 2px; font-size: 19px; }
+  .panel .lead { color: #5a6b76; font-size: 13.5px; margin: 0 0 12px; }
+
+  .tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 3px;
+         vertical-align: 3px; margin-left: 8px; border: 1px solid; }
+  .t-rule { background: #e4ebf1; color: #2b5773; border-color: #8fa8bd; }
+  .t-tool { background: #d9f0d9; color: #1a5c1a; border-color: #7fbf8f; }
+  .t-gate { background: #fdf4e5; color: #7a5a10; border-color: #d9b45c; }
+  .t-art  { background: #fbd5da; color: #8c1f2a; border-color: #d98a94; }
+  .t-host { background: #e8ebee; color: #4d5a66; border-color: #a9b2ba; }
+
+  .sec { margin: 14px 0 0; }
+  .sec > .h { font-size: 13px; color: #3d6b8f; font-weight: bold; margin-bottom: 6px;
+              padding-bottom: 3px; border-bottom: 1px dashed #d5dee5; }
+  .say { border-left: 3px solid #9fb0bd; background: #f6f8fa; padding: 8px 12px;
+         margin: 8px 0; font-size: 13.5px; border-radius: 0 5px 5px 0; }
+  .say.warn { border-left-color: #d0a13c; background: #fdf9ef; }
+  .say.red  { border-left-color: #cf6a7a; background: #fdf3f4; }
+  .say.green{ border-left-color: #4f9f6f; background: #f3f9f5; }
+
+  pre.data { background: #f4f6f8; border: 1px solid #d5dde3; border-radius: 6px; padding: 8px 11px;
+             font-size: 12.2px; line-height: 1.55; overflow-x: auto;
+             font-family: Consolas, "Courier New", monospace; margin: 6px 0; color: #2a3b47; }
+  pre.data em { font-style: normal; color: #7a8a96; } /* 注释灰 */
+
+  .steps { display: flex; gap: 0; flex-wrap: wrap; align-items: stretch; }
+  .st { flex: 1 1 165px; border: 1px solid #b9c8d4; border-radius: 7px; padding: 8px 10px;
+        background: #f4f8fb; font-size: 13px; margin: 4px 0; }
+  .st > b { display: block; font-size: 13px; margin-bottom: 2px; }
+  .st > span { color: #5f6f7a; font-size: 12.3px; }
+  .st.in  { background: #eaf2f8; border-color: #8fa8bd; }
+  .st.out { background: #eaf7ef; border-color: #7fbf8f; }
+  .st.br  { background: #fdf4e5; border-color: #d9b45c; }
+  .st.bad { background: #fdf0f1; border-color: #cf6a7a; }
+  .arw { align-self: center; color: #93a5b3; font-weight: bold; padding: 0 6px; font-size: 15px; }
+
+  table.mini { border-collapse: collapse; width: 100%; font-size: 13px; margin: 4px 0; }
+  table.mini th, table.mini td { border: 1px solid #d8e0e6; padding: 5px 9px; text-align: left; vertical-align: top; }
+  table.mini th { background: #f0f4f7; }
+  code { background: #eef1f4; padding: 1px 4px; border-radius: 3px; font-size: 12.3px; }
+  .hint { text-align: center; color: #8b9aa4; font-size: 12.5px; margin: 10px 0 0; }
+  @media print { .tabs { display: none; } }
+</style>
+</head>
+<body>
+
+<h1>QwenPaw-Data 意图识别流程（可下钻）</h1>
+<div class="sub">从用户一句话到可执行分析计划 · 纯 SKILL 规则驱动的多级意图识别（无分类模型 / 无向量检索） · 点主流程任意节点，展开子流程、实际契约与代码位置</div>
+
+<div class="tabs">
+  <button id="tab-main" class="on" onclick="switchTab('main')">主流程（一句话 → 分析计划）</button>
+  <button id="tab-router" onclick="switchTab('router')">L0 判定规则（8 类任务分派）</button>
+  <button id="tab-disambig" onclick="switchTab('disambig')">消歧与反问（歧义消除闭环）</button>
+</div>
+
+<div class="mapwrap">
+  <svg class="main" id="map" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/>
+      </marker>
+    </defs>
+  </svg>
+  <p class="hint" id="hint">点击上方方块，查看该环节的子流程、输入输出与代码位置</p>
+</div>
+
+<div class="detail" id="detail"></div>
+
+<script>
+const NODES = {
+/* ───────────────────────── 主流程 ───────────────────────── */
+
+"u0": `<div class="panel">
+<h2>用户请求<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">一切从一条自然语言消息开始——没有表单、没有固定槽位，意图识别的全部责任在 SKILL 规则侧。</p>
+<div class="sec"><div class="h">输入样例与期望识别结果</div>
+<pre class="data">"转化率为什么下降"        <em>→ 2a（BI 业务分析）+ question_type=why</em>
+"查一下上月销售额"        <em>→ 1b（数据查询，直接取数）</em>
+"看一下这份数据的分布"    <em>→ 2b（数据探索）</em>
+"帮我把刚才的分析整理成报告" <em>→ 2e（报告生成，上下文已有结论）</em></pre></div>
+<div class="say">识别是概率行为：越口语的请求（"帮我把数据捋一捋"）越依赖技能 <code>description</code> 里的触发词命中——description 是这套体系事实上的路由索引。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0">触发词定义在各 <code>SKILL.md</code> frontmatter <code>description</code>（最典型：<code>packages/qwenpaw-data-skills/skills/workflows/fetch-data/SKILL.md</code> 的 5 类触发条件）</p></div>
+</div>`,
+
+"a1": `<div class="panel host">
+<h2>技能清单装配<span class="tag t-host">宿主装配</span></h2>
+<p class="lead">意图识别的「第一级检索索引」在会话开始前就装配好：31 个技能只暴露「名称 + 描述」，模型据此决定读哪个 SKILL.md。</p>
+<div class="sec"><div class="h">装配链路（实际代码）</div>
+<pre class="data">discover_builtin_skills()
+  → skills_root.rglob("SKILL.md")          <em># 扫描全部技能目录</em>
+  → parse frontmatter: name + description  <em># 只取这两项做索引</em>
+  → BuiltinSkill(name, src_dir, group, description) × 31
+  → toolkit: skills_or_loaders=workspace_skills  <em># 挂进 agent 工具组</em></pre></div>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>扫描</b><span>rglob 全部 SKILL.md</span></div>
+<span class="arw">→</span>
+<div class="st"><b>解析</b><span>YAML frontmatter → name/description</span></div>
+<span class="arw">→</span>
+<div class="st"><b>冲突检查</b><span>重名技能直接报错</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>挂载</b><span>进 agent 工具组，按需 Read 加载</span></div>
+</div></div>
+<div class="say warn"><b>description 就是路由表：</b><code>fetch-data</code> 的 description 是一份 5 类触发词大清单（索要指标 / 取数口语 / 数据来源 / 问元数据 / 工作区缺数据），本质是给第一级意图匹配用的关键词表——写得越长，召回越稳。</div>
+<div class="say">宿主侧另有 <code>biztrace</code>（执行轨迹分段）与 <code>followup</code>（追问推荐）算法模块，属会话观测 / 推荐增强，<b>不参与</b>意图识别主链路。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-host-core/src/qwenpaw_data/host/core/utils/skill.py:64</code>（discover_builtin_skills）· <code>agent/toolkit.py:268</code>（skills_or_loaders）· 技能数断言 <code>tests/test_workspace_skills.py:30</code></p></div>
+</div>`,
+
+"a2": `<div class="panel host">
+<h2>系统提示约束<span class="tag t-host">宿主装配</span></h2>
+<p class="lead">MASTER.md 把「技能在哪、何时必须读、多解怎么办」写进系统提示——意图识别的行为契约在会话最外层。</p>
+<div class="sec"><div class="h">与意图识别直接相关的约束</div>
+<pre class="data">"Skills 位于 agent workspace 下的 skills/&lt;name&gt;/SKILL.md；
+ 复杂分析优先读取对应 skill，不要从零手写一套方法"
+"多解先确认：……如果仍无法唯一确定用户所指的指标、字段、维度或口径，
+ 必须先向用户确认，再执行 SQL 或给出数据结论。
+ 反问时列出所有候选项，并说明每项口径或描述差异"</pre></div>
+<div class="say">「多解先确认」与 <code>interaction-strategy</code> 的 Type 1 同源——反问不是可选风格，是系统级纪律，系统提示 + runtime skill 双层强化。另：Plan / Agent 运行模式由界面切换，Plan 模式仅开放规划类工具（<code>create_plan</code> / <code>revise_current_plan</code>）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-host-core/src/qwenpaw_data/host/core/prompts/MASTER.md:36</code>（分析技能）· <code>:64</code>（多解先确认）· <code>prompts/PLAN_MODE.md</code></p></div>
+</div>`,
+
+"h1": `<div class="panel">
+<h2>skill-hub-guide（Meta 入口）<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">技能仓库总说明书——description 声明「执行任何数据分析任务前必须优先加载」，是意图进入技能体系的第一道门。</p>
+<div class="sec"><div class="h">六层技能体系（意图识别相关层加粗）</div>
+<table class="mini"><tr><th>层级</th><th>职责</th><th>SKILL</th></tr>
+<tr><td><b>L0 路由</b></td><td><b>判定任务类型，分发处理链路</b></td><td><code>data-intent-router</code></td></tr>
+<tr><td><b>L1 规划</b></td><td><b>补充上下文、匹配模块和指标，产出结构化计划</b></td><td><code>analysis-plan-builder</code></td></tr>
+<tr><td>Workflows</td><td>编排原子技能与取数</td><td><code>fetch-data</code> + 4 条 BI 分析流 + 2 条 DS 流</td></tr>
+<tr><td>Atomic</td><td>单一分析动作</td><td>17 个（观测 / 检测 / 归因 / 统计 / 报告）</td></tr>
+<tr><td>Runtime</td><td>横切强制规范</td><td><code>runtime-guide</code> · <code>bi-semantic-layer-guide</code> · <code>interaction-strategy</code></td></tr>
+<tr><td>Meta</td><td>仓库使用约定</td><td><code>skill-hub-guide</code>（本文件）</td></tr>
+</table></div>
+<div class="sec"><div class="h">核心原则（对意图识别的约束）</div>
+<pre class="data">SKILL 即规范：即使认为可以简化也必须完整遵循
+按需调用：禁止一次性预读所有 SKILL，按当前子任务逐个加载
+参数优先级：用户显式指定 > 域知识包 > 语义层接口 > SKILL 默认值</pre></div>
+<div class="say red"><b>单点风险：</b>若模型没加载这份指南（description 未命中），整个链路约束失效——纯 prompt 体系没有硬性 enforce，靠「必须优先加载」措辞 + MASTER.md 系统提示双保险。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-skills/skills/meta/skill-hub-guide/SKILL.md</code>（含 6 条典型链路图）</p></div>
+</div>`,
+
+"r1": `<div class="panel">
+<h2>L0 任务类型判定<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">意图识别第一道正式判定：8 个任务类型，依次检查、命中即停。</p>
+<div class="sec"><div class="h">判定顺序（完整决策树见「L0 判定规则」页签）</div>
+<pre class="data">1 查询类（无分析推理）
+   1a 元数据查询（字段含义 / 表结构 / 关联关系）
+   1b 数据查询（某个值 / 某批记录）
+2 分析类（分析 / 建模 / 计算 / 报告）
+   2a BI 业务分析 · 2b 数据探索 · 2c 统计建模 · 2d 定量计算 · 2e 报告生成
+3 非数据任务（兜底）
+边界：复合意图（查数 + 分析）→ 以分析类为准</pre></div>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>查询类检查</b><span>获取数据 / 定义且无分析推理？</span></div>
+<span class="arw">→</span>
+<div class="st"><b>分析类检查</b><span>5 个子类逐一对照定义 + 例子</span></div>
+<span class="arw">→</span>
+<div class="st"><b>非数据兜底</b><span>均不命中</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>输出类型标签</b><span>决定后续链路</span></div>
+</div></div>
+<div class="say">整个 SKILL 只有 50 行——规则极简是刻意设计：判定逻辑全部显式写在 prompt 里让模型执行，没有隐藏状态。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-skills/skills/routing/data-intent-router/SKILL.md</code></p></div>
+</div>`,
+
+"t1": `<div class="panel">
+<h2>任务类型 → 链路分流<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">判定结果的消费表：任务类型标签决定走哪条链路、是否经过 L1 规划（意图精化只发生在 L1）。</p>
+<div class="sec"><div class="h">6 条链路（hub-guide 定义）</div>
+<table class="mini"><tr><th>类型</th><th>链路</th><th>L1 规划</th></tr>
+<tr><td>2a BI 业务分析</td><td>plan-builder → fetch-data → bi-metric / retention / conversion / cohort → 报告</td><td>是</td></tr>
+<tr><td>2b 数据探索</td><td>plan-builder（探查 + 子任务序列）→ fetch-data → atomic 按计划串接</td><td>是</td></tr>
+<tr><td>2c 统计建模</td><td>plan-builder（建模目标 / 特征 / 评估口径）→ bi-clustering / bi-comparison</td><td>是</td></tr>
+<tr><td>2d 定量计算</td><td>fetch-data → 直接 atomic（ltv / funnel / conversion / retention …）</td><td>否</td></tr>
+<tr><td>2e 报告生成</td><td>直接 bi-report-generation（组织既有结论）</td><td>否</td></tr>
+<tr><td>1a / 1b 查询</td><td>fetch-data 直接取数 / 答元数据</td><td>否</td></tr>
+</table></div>
+<div class="say warn"><b>是否走 L1 是关键分水岭：</b>只有 2a/2b/2c 会做意图精化（业务类型 → 模块 → 指标）；2d 的判定依据是「公式明确」，无需规划正是它被归为简单任务的前提。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/meta/skill-hub-guide/SKILL.md</code>「典型调用链路」节</p></div>
+</div>`,
+
+"p1": `<div class="panel">
+<h2>L1 精化入口：analysis-plan-builder<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">把「要做分析」细化成「具体分析什么」。设计原则「行动优先」：先收集上下文、再规划、最后才决定问不问用户。</p>
+<div class="sec"><div class="h">内部子流程（Step 1 上下文构建）</div><div class="steps">
+<div class="st in"><b>1.1 资源确认</b><span>有语义层 MCP 立即调用</span></div>
+<span class="arw">→</span>
+<div class="st"><b>1.2 任务类型分流</b><span>BI → 1.3–1.5；非 BI → 1.6</span></div>
+<span class="arw">→</span>
+<div class="st"><b>BI：1.3→1.4→1.5</b><span>业务类型 → 模块 → 指标</span></div>
+<span class="arw">·</span>
+<div class="st"><b>非 BI：1.6</b><span>数据探查代替业务目录</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>Step 2</b><span>生成结构化计划</span></div>
+</div></div>
+<div class="sec"><div class="h">跳过规则（意图已显式时不再重复识别）</div>
+<pre class="data">前置条件：任务类型已知（L0 输出）
+若用户已明确指定指标（如"分析 DAU 变化"）
+  → 跳过 1.3 业务识别 与 1.4 范围确认，直接进 1.5 确认指标角色</pre></div>
+<div class="say green"><b>「最差体验是一连串提问什么都没做」</b>——所以上下文收集先于提问，且 1.1 要求把语义层发现实时输出到 assistant 消息，用户随时可打断纠偏。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-skills/skills/planning/analysis-plan-builder/SKILL.md</code></p></div>
+</div>`,
+
+"c1": `<div class="panel tool">
+<h2>1.1 语义层上下文构建<span class="tag t-tool">工具与检索</span></h2>
+<p class="lead">规划前先调语义层——能用检索解决的意图歧义，不留给用户。search_context 不是查表，而是 CM（context-manager）服务里一条「LLM + 图检索」七步管线。</p>
+<div class="sec"><div class="h">技能侧调用（MCP 工具真实签名）</div>
+<pre class="data">search_context(query="5月app端对话用户数怎么样",  <em># 用户原始问题</em>
+               domain="产品A",                     <em># 或 scope={"domain":..., "as_of_date":...}</em>
+               session_ref=自动注入,               <em># harness 带外注入，LLM 无需填</em>
+               relevance_threshold=0.40)           <em># 相关度门槛，默认 0.40</em>
+<em># 返回 relevance.status: relevant | low_confidence | no_match（三档硬信号）</em>
+get_domain_overview(domain)  <em># search_context 返回不足时补域全貌</em>
+无 MCP 语义层工具 → 跳过，直接进 1.2 按任务类型分流</pre></div>
+<div class="sec"><div class="h">实现链路（谁在干活）</div>
+<pre class="data">MCP 工具 search_context               mcp/cm_server.py:269（HTTP 代理 + 心跳保活）
+  → POST /api/v1/cm/search_context    api/cm_api.py:1403（SSE 流式，逐步 progress）
+    → 检索管线 _run_pipeline_front     api/ctx_pipeline.py（七步，见下）
+    → 响应组装 shape_l1               api/l1_shape.py（primary / alternatives / schema_prompt）
+图数据来源: semantic_config 编辑层（SQLite CRUD + Excel 导入）
+  → weave 织入 Neo4j（Metric/Dimension/Column/Event/Entity 节点
+    + 全文/向量索引 + 策略卡），检索与织入共用同一图库</pre></div>
+<div class="sec"><div class="h">内部七步管线（ctx_pipeline，每步有时耗统计）</div><div class="steps">
+<div class="st in"><b>⓪ 语义拆分 + 实体扩展</b><span>两个 LLM 并发：问句拆检索 facet / 实体别名扩召回词</span></div>
+<span class="arw">→</span>
+<div class="st"><b>① 锚点召回</b><span>全文 + 向量按标签检索 → RRF 融合；LLM rerank 精排（与②并发）</span></div>
+<span class="arw">→</span>
+<div class="st"><b>② 策略卡召回</b><span>每 facet 向量 ANN 召回可复用分析卡 → 阈值 Gate 分可见 / 屏蔽</span></div>
+<span class="arw">→</span>
+<div class="st"><b>③ 决策 LLM</b><span>task_type + 复用卡 + 在候选边上选路径；可配 ReAct 多轮，失败回退规则选路</span></div>
+<span class="arw">→</span>
+<div class="st"><b>④ 子图游历</b><span>两跳候选边 ∪ 策略卡子图 ∪ 选中路径取并集；空则加权 BFS 兜底</span></div>
+<span class="arw">→</span>
+<div class="st"><b>⑤ 指标展开</b><span>Top-4 指标锚点并发 expand_subgraph 补全口径 / 维度 / 表</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>⑥ 组装</b><span>primary 1–2 张全量语义卡 + alternatives 简引 + schema_prompt</span></div>
+</div></div>
+<div class="sec"><div class="h">两个关键打分机制</div>
+<pre class="data">RRF 锚点融合: Metric / Dimension / Column 各自
+  db.index.fulltext.queryNodes + db.index.vector.queryNodes
+  → rrf_merge 只按排名融合、不合成分数（原始余弦另存，供 relevance 用）
+relevance 三档: soft_text_match（字符 n-gram 覆盖率）与归一化余弦
+  （Neo4j (1+cos)/2 重缩放到 [0,1]）按权重融合
+  → ≥ 0.40 relevant / ≥ floor low_confidence / 其余 no_match</pre></div>
+<div class="sec"><div class="h">返回给规划 LLM 的形态（l1_shape 产出）</div>
+<pre class="data">primary_metrics:     1–2 个最相关指标的完整语义卡（口径/公式/维度/表）
+alternative_metrics: 次优候选的简短引用（供消歧时列选项）
+knowledge_notes:     过阈值的知识片段（上限截断）
+schema_prompt:       只用 primary 渲染的指标中心自然语言（alternatives 挂尾行）</pre></div>
+<div class="say"><b>选路只喂组装：</b>决策 LLM 选出的路径仅用于 schema_prompt 组装，不做 SQL 规划——SQL 生成是 fetch-data（NL2SQL）的职责，两级各管一段。</div>
+<div class="say red"><b>no_match 必须拦截：</b>语义层返回 <code>no_match</code> 表示指标<b>不存在</b>，与「存在但无数据」是两件事——禁止当作 0 或空表继续，禁止绕过语义层自己拼 SQL 造同名指标。</div>
+<div class="say">匹配到多个指标时：优先北极星（<code>is_north_star=true</code>）→ 精确名称优先于同义词 → 跨域同名用当前业务域限定。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0">技能侧：<code>analysis-plan-builder/SKILL.md</code> Step 1.1 · <code>skills/runtime/bi-semantic-layer-guide/SKILL.md</code>；实现侧（<code>packages/qwenpaw-data-context/src/context_manager/</code>）：<code>mcp/cm_server.py:269</code>（工具）· <code>api/cm_api.py:1403</code>（端点）· <code>api/ctx_pipeline.py</code>（管线）· <code>api/l1_shape.py</code>（组装）· <code>runtime/anchors.py</code>（RRF 召回）· <code>runtime/relevance.py</code>（三档判定）</p></div>
+</div>`,
+
+"n12": `<div class="panel">
+<h2>1.2 按任务类型补充上下文<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">1.1 之后的岔路口：按 L0 判定的任务类型决定走哪条上下文补充链——BI 走业务目录链，非 BI 走数据探查。</p>
+<div class="sec"><div class="h">分流规则（SKILL 原文）</div>
+<pre class="data">BI 业务分析            → 继续 1.3 ~ 1.5（业务类型 → 模块 → 指标）
+其他任务类型（数据探索、统计建模等）→ 继续 1.6（数据探查）</pre></div>
+<div class="sec"><div class="h">附带的跳过规则（BI 链内部）</div>
+<pre class="data">若用户已明确指定分析的指标（如"分析 DAU 变化"）
+  → 可跳过 1.3 业务识别 与 1.4 范围确认，直接进 1.5 确认指标角色</pre></div>
+<div class="say">1.2 本身不做识别——任务类型是 L0 的输出，这里只是消费它选路；这也解释了为什么 2d / 1a / 1b / 2e 不经过此处：它们在 L0 之后就直连执行链路了。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>analysis-plan-builder/SKILL.md</code> §1.2（Step 1 上下文构建内）</p></div>
+</div>`,
+
+"c2": `<div class="panel">
+<h2>1.3 业务类型判定<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">意图的第一次领域定位：业务类型 + 子类型——它决定读哪份模块目录，判错则分析范围全偏。</p>
+<div class="sec"><div class="h">判定依据（三特征 + 判定优先级）</div>
+<pre class="data">ToB: 客户=企业 · 决策链长 · 重 ROI（SaaS / 企业工具 / 云基础设施）
+ToC: 客户=个人 · 决策链短 · 重体验（内容 / 社交 / 工具 / 电商）
+     └ 子类型: 工具类 · 内容社区类 · 电商交易类 · 游戏类
+ToD: 开发者 / 创作者 · 成就感 > 经济回报 · 网络效应强
+Mixed: 取权重最高两个为主干 + 追加跨模块联动分析
+
+判定优先级: 用户显式指定 > 产品名已知 > WebSearch 后判定
+            > 无产品信息（纯数据集）→ 跳过判定</pre></div>
+<div class="say warn"><b>允许搜索兜底：</b>产品不熟悉时通过 WebSearch 查官网 / 行业介绍辅助判定——这是意图识别里唯一引入外部信息的点。</div>
+<div class="say">Mixed 的分析优先级三原则：阶段优先（早期规模 / 中期变现 / 后期均衡）· 瓶颈优先 · 联动优先。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>analysis-plan-builder/references/bi-business-type-guide.md</code></p></div>
+</div>`,
+
+"c3": `<div class="panel">
+<h2>1.4 分析模块匹配<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">用户问题 ↔ 分析目录（modules/ 按业务子类型分文件）的四级匹配——匹配粒度直接决定分析范围大小。</p>
+<div class="sec"><div class="h">目录样例（ToC 工具类 toc-tool.md）</div>
+<pre class="data">用户趋势与规模: 用户规模 · 增长趋势 · 渠道来源分布及转化效率 · 增长归因
+用户结构及留存: 用户结构分布 · 用户留存趋势 · 留存归因与价值
+使用行为及体验: 功能使用分析 · 用户体验质量 · A/B 测试效果评估 · 用户需求分析
+用户转化与价值: 用户转化链路 · 用户收入分析 · 收入分布及付费留存</pre></div>
+<div class="sec"><div class="h">四级匹配（由窄到宽）</div><div class="steps">
+<div class="st in"><b>命中条目</b><span>"用户留存" → 仅该条目</span></div>
+<span class="arw">→</span>
+<div class="st"><b>命中模块</b><span>"用户趋势与规模" → 全量条目</span></div>
+<span class="arw">→</span>
+<div class="st"><b>语义意图匹配</b><span>"增长分析" → 相关模块相关条目</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>宽泛问题</b><span>"分析 3 月数据" → 全量模块</span></div>
+</div></div>
+<div class="say warn"><b>弹性最大的一环：</b>四级之间没有强制闸门，全靠模型判断——宽泛问题拉起全量模块等于成本上限，条目命中最省。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>analysis-plan-builder/references/modules/</code>（toc-tool / toc-content / toc-ecommerce / toc-game / tob-product / tod-developer 共 6 份）</p></div>
+</div>`,
+
+"c4": `<div class="panel">
+<h2>1.5 指标细化<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">每个条目落成具体指标并分配角色——角色是意图的「权重表达」，决定下游谁被深度分析。</p>
+<div class="sec"><div class="h">指标与角色的取值优先级（命中即停）</div>
+<table class="mini"><tr><th>优先级</th><th>来源</th><th>取指标 / 角色</th></tr>
+<tr><td>1</td><td>用户问题</td><td>明确提到的指标直接采用；语气判角色（"重点看"→北极星，"顺便看"→展示）</td></tr>
+<tr><td>2</td><td>域知识包</td><td>包内定义的指标与标注角色</td></tr>
+<tr><td>3</td><td>语义层</td><td>查询模块相关指标并验证</td></tr>
+<tr><td>4</td><td>metrics 框架文档</td><td><code>references/metrics/toc.md / tob.md / tod.md</code> 推荐指标 + 默认角色</td></tr>
+<tr><td>5</td><td>默认</td><td>按模块名推断常见指标</td></tr>
+</table></div>
+<div class="sec"><div class="h">三种角色</div>
+<pre class="data">北极星: 核心监测，做异常检测 + 维度拆解 + 归因（每模块 1-3 个，不宜多）
+展示:   常规观测，展示数据和衍生指标
+分布:   需要展示各维度下分布和占比
+<em># 每个指标至少一个角色，可多角色叠加（如北极星 + 分布）</em></pre></div>
+<div class="say">同样识别出 10 个指标，谁是北极星决定 bi-metric-analysis 对谁做 3.1–3.4 全链归因——角色分配是意图识别结果里影响成本最深的字段。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>analysis-plan-builder/references/bi-metric-specification.md</code></p></div>
+</div>`,
+
+"c5": `<div class="panel tool">
+<h2>1.6 数据探查（非 BI 分支）<span class="tag t-tool">工具与检索</span></h2>
+<p class="lead">2b / 2c 没有业务模块体系，意图精化改为「摸数据」：用数据画像代替业务目录。</p>
+<div class="sec"><div class="h">探查动作</div><div class="steps">
+<div class="st in"><b>读 schema</b><span>字段名 / 类型 / 数量</span></div>
+<span class="arw">→</span>
+<div class="st"><b>看规模</b><span>行数 / 时间跨度</span></div>
+<span class="arw">→</span>
+<div class="st"><b>采样</b><span>缺失 / 异常值 / 分布形态</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>判相关字段</b><span>结合问题定分析目标相关列</span></div>
+</div></div>
+<div class="sec"><div class="h">产出（data_profile 进计划）</div>
+<pre class="data">data_profile:
+  rows: 50000 · columns: 12
+  age_column: { type: int, missing_rate: 3.2%, range: "0-120", median: 28 }</pre></div>
+<div class="say">非 BI 计划的意图字段多一个 <code>phenomenon</code>（现象，如"分布不均"）；子任务必须是可执行操作（清洗 / 计算 / 检验），不接受笼统方向。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>analysis-plan-builder/SKILL.md</code> Step 1.6 + 非 BI 计划示例</p></div>
+</div>`,
+
+"pl1": `<div class="panel art">
+<h2>结构化计划 YAML<span class="tag t-art">结构化产物</span></h2>
+<p class="lead">意图识别的最终载体——全部识别结果落成结构化 YAML，作为 plan 草稿交付 host 生成 TaskGraph。</p>
+<div class="sec"><div class="h">实际结构（SKILL 示例）</div>
+<pre class="data">task_type: bi_analysis
+intent:
+  goal: "分析访问趋势和对话情况"
+  subject: "产品A"
+  question_type: what            <em># what | why —— why 驱动归因链</em>
+known_conditions:
+  period: { start: "2026-03-01", end: "2026-03-31" }
+  metric_mentions: ["访问用户数", "对话次数"]
+context:
+  business: { type: "ToC", sub_type: "工具类", domain: "product_a" }
+scope:
+  modules:
+    - module_name: "用户趋势与规模"
+      analysis_items: ["用户规模", "增长趋势", "增长归因"]
+      metrics:
+        - { name: "访问用户数", roles: [north_star] }
+        - { name: "新增用户数", roles: [display] }
+missing_info: []                 <em># 下一道闸门的输入</em></pre></div>
+<div class="say"><b>question_type 是意图的关键维度：</b>why（"为什么下降"）触发 bi-metric-analysis 的异常检测 → 维度下拆 → 时间归因全链；what 只做观测描述。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>analysis-plan-builder/SKILL.md</code> Step 2 示例</p></div>
+</div>`,
+
+"g1": `<div class="panel gate">
+<h2>信息充分性闸门<span class="tag t-gate">人机闸门</span></h2>
+<p class="lead">交付计划前的强制检查：<code>missing_info</code> 决定立即执行还是先补信息。</p>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>检查 missing_info</b><span>计划里还有没有信息缺口</span></div>
+<span class="arw">→</span>
+<div class="st"><b>为空</b><span>create_plan →（Type 2 未触发）输出 1-2 句概览，立即 update_subtask 开始执行</span></div>
+<span class="arw">→</span>
+<div class="st br"><b>非空</b><span>先用工具消歧——MCP 能解的不问用户</span></div>
+<span class="arw">→</span>
+<div class="st bad"><b>仍无法解决</b><span>Type 1 反问（见左下节点）</span></div>
+</div></div>
+<div class="say red"><b>硬规则：</b>「当且仅当缺失项无法通过工具自行获取时才反问」——先消歧后提问，顺序不可倒置。Type 2 触发时（用户显式要求看计划）输出详细计划 + 确认语，<b>不调用任何工具</b>，本轮自然结束等用户回复。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>analysis-plan-builder/SKILL.md</code>「产出」节（信息充分性检查 + Phase 3）</p></div>
+</div>`,
+
+"q1": `<div class="panel gate">
+<h2>人机交互闸门（Type 1 / Type 2）<span class="tag t-gate">人机闸门</span></h2>
+<p class="lead">interaction-strategy 定义三类人机交互；核心原则：<b>默认行为是行动，反问是例外。</b></p>
+<div class="sec"><div class="h">与意图识别直接相关的两类</div>
+<table class="mini"><tr><th>类型</th><th>触发条件</th><th>行为</th></tr>
+<tr><td>Type 1 求助 / 求信息</td><td>三条件同时满足：信息确实不足 + 已尝试工具自行获取 + 自排障达上限（执行中最多重试 2 轮）</td><td>说明已知 → 只问一个核心问题 → 提供选项 → 说明影响</td></tr>
+<tr><td>Type 2 确认计划</td><td>用户显式触发词（"先规划一下""你打算怎么做"）或报告结构有多种可能</td><td>create_plan 后停下，输出计划概览 + 确认语，等待回复</td></tr>
+</table></div>
+<div class="sec"><div class="h">反问前置要求 & 不允许反问的场景</div>
+<pre class="data">Plan 构建前: 先调 MCP 语义层（search_context / get_domain_overview / list_metrics）
+             返回可消歧 → 不反问直接用
+不允许反问:   表选择有多个候选但 skill 已定义优先级 → 按优先级执行
+             聚合粒度未指定 → 用默认值并在回复中说明
+             精确名称唯一匹配一个指标 → 直接使用</pre></div>
+<div class="say green"><b>反问四原则：</b>说明已知（让用户知道你不是空手来问）· 精准提问（一次只问一个）· 提供选项（有限候选列出来）· 说明影响（缺它会怎样）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-skills/skills/runtime/interaction-strategy/SKILL.md</code>（含两个候选指标二选一的示例）</p></div>
+</div>`,
+
+"x1": `<div class="panel tool">
+<h2>执行期：意图落地<span class="tag t-tool">工具与检索</span></h2>
+<p class="lead">计划进入执行——意图识别的各类结果在这里被逐项消费。</p>
+<div class="sec"><div class="h">意图字段 → 消费点</div>
+<table class="mini"><tr><th>识别结果</th><th>消费点</th></tr>
+<tr><td><code>question_type = why</code></td><td>bi-metric-analysis 从 3.1 异常检测起走全链归因（下拆 → 时间归因 → 新增维度）</td></tr>
+<tr><td><code>roles = north_star</code></td><td>对该指标做异常检测 + 维度下拆；展示角色只进观测表</td></tr>
+<tr><td><code>scope.modules</code></td><td>TaskGraph 节点拆分依据（update_subtask 逐节点登记）</td></tr>
+<tr><td><code>business.type</code></td><td>归因维度选择与域知识约束（如"率值变动用 pt 表达"）</td></tr>
+<tr><td>结构化问题 JSON</td><td>fetch-data 的 NL2SQL 输入（见「消歧与反问」页签）</td></tr>
+</table></div>
+<div class="say">执行期横切约束由 runtime-guide 承担：产物落盘（plan.yaml 不改、调整生成 plan_v1.yaml 递增）、同源数据只取一次、异常如实记录；意图仍可通过 <code>revise_current_plan</code> 修正。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/runtime/runtime-guide/SKILL.md</code> · <code>skills/workflows/bi-metric-analysis/SKILL.md</code>（3.1–3.4 步骤）</p></div>
+</div>`,
+
+"d1": `<div class="panel host">
+<h2>非规划直达链路<span class="tag t-host">宿主装配</span></h2>
+<p class="lead">四类任务不经 L1 规划直接执行——意图识别到任务类型为止，结构化程度最低。</p>
+<div class="sec"><div class="h">各类型去向</div>
+<pre class="data">1a / 1b 查询  → fetch-data 读元数据 / 跑 SQL 直接返回（不规划不分析）
+2d 定量计算   → fetch-data 取数 → 对应 atomic 直接算（ltv / funnel / conversion …）
+2e 报告生成   → bi-report-generation 组织上下文既有结论</pre></div>
+<div class="say">「简单」是设计取舍：查询与公式明确的计算不需要计划开销；代价是没有 plan.yaml 意图留痕（过程产物仍在 <code>steps/</code> 与 <code>data/raw/</code> 落盘可审计）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/meta/skill-hub-guide/SKILL.md</code> 典型链路 4–6</p></div>
+</div>`,
+
+/* ───────────────────────── L0 判定规则 ───────────────────────── */
+
+"s0": `<div class="panel">
+<h2>判定输入<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">判定输入就是用户原句——没有预处理、没有分类模型、没有 embedding，LLM 直接对照规则文本分类。</p>
+<div class="sec"><div class="h">输入 → 期望输出</div>
+<pre class="data">"转化率为什么下降"      → 2a
+"查一下上月销售额"      → 1b
+"帮我写个脚本"          → 3
+"看看这份数据有什么问题" → 2a 或 2b（边界情形）</pre></div>
+<div class="say">判定是概率行为而非确定性函数——「依次检查，命中即停」的顺序设计就是在压缩这种自由度；例句（few-shot 锚点）补偿定义的模糊性。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/routing/data-intent-router/SKILL.md</code></p></div>
+</div>`,
+
+"rc1": `<div class="panel">
+<h2>① 查询类检查（第 1 优先）<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">获取数据或了解数据定义、<b>不涉及分析推理</b>的请求——先于分析类检查。</p>
+<div class="sec"><div class="h">判据与信号词</div>
+<pre class="data">判据: 不涉及分析推理（诊断、归因、对比、解释、建模等）
+1a 信号: 什么意思 / 哪些字段 / 怎么关联 / 可用数据源
+1b 信号: 多少 / 查一下 / 有哪些 / 这个客户的订单</pre></div>
+<div class="say"><b>「不涉及」三个字是关键：</b>"查一下 DAU 并分析下降原因"因含分析落不到这里，被复合意图规则推向 2a（见左下边界节点）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §1</p></div>
+</div>`,
+
+"rc2": `<div class="panel">
+<h2>② 分析类检查（第 2 优先）<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">涉及分析、建模、计算、报告等数据处理任务——5 个子类各有定义与例句锚点，逐一对照。</p>
+<div class="sec"><div class="h">5 个子类的判据要点</div>
+<pre class="data">2a: 围绕业务指标的基本观察 / 趋势洞察 / 诊断 / 归因，或直接要产出（日周月报）
+2b: 没有预设业务问题，探索性了解数据（分布 / 质量 / 可用性）
+2c: 出现建模概念（回归 / 分类 / 聚类 / 预测 / 特征工程 / 假设检验）
+2d: 按已知公式或算法执行确定性计算（输入 → 公式 → 输出，无需拟合数据）
+2e: 上下文中已有分析结论，用户只要求格式化</pre></div>
+<div class="say">每个子类配 2-3 个例句——规则作者用例子补偿定义的模糊性，这是纯 prompt 分类的标准做法。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §2</p></div>
+</div>`,
+
+"rc3": `<div class="panel">
+<h2>③ 非数据任务（兜底）<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">以上均不命中——核心意图不涉及数据操作或数据分析，数据技能体系不接管。</p>
+<div class="sec"><div class="h">例句</div>
+<pre class="data">"帮我写个脚本"  "写一份 AI 领域的调研报告"  "今天天气怎样"</pre></div>
+<div class="say">注意「写一份调研报告」判 3 而非 2e——2e 要求<b>上下文中已有分析结论</b>，从零写报告是文档任务不是数据任务。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §3</p></div>
+</div>`,
+
+"bnd": `<div class="panel gate">
+<h2>边界：复合意图<span class="tag t-gate">人机闸门</span></h2>
+<p class="lead">唯一的显式边界规则：同时包含查数和分析的复合意图，以分析类为准——不在查询类停留。</p>
+<div class="sec"><div class="h">输入 → 输出</div>
+<pre class="data">"查一下 DAU，并分析下降原因"
+  → 同时命中 1b（查数）+ 2a（分析）
+  → 判 2a：走 L1 规划 + 异常归因链</pre></div>
+<div class="say green"><b>设计意图是「宁可规划过度，不可分析缺失」：</b>若判成 1b 直接查数返回，归因诉求会被静默丢弃——用户以为在分析，其实只拿到了一个数。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code>「边界情况」</p></div>
+</div>`,
+
+"l1a": `<div class="panel">
+<h2>1a 元数据查询<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">询问数据的定义或结构——不碰数据值，只答语义。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 字段含义 · 计算口径 · 枚举值 · 表结构 · 关联关系 · 可用数据源
+例子: "这个字段什么意思" "表里有哪些字段" "这两张表怎么关联"
+去向: fetch-data 读元数据直接返回 —— 不规划、不分析</pre></div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §1a · 链路见 <code>skill-hub-guide</code> 链路 6</p></div>
+</div>`,
+
+"l1b": `<div class="panel">
+<h2>1b 数据查询<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">直接获取数据结果——某个值、某批记录、某张表的内容。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 直接获取数据结果（某个值 / 某批记录 / 某张表内容）
+例子: "昨天 DAU 多少" "查一下上月销售额" "这个客户的订单有哪些"
+去向: fetch-data → NL2SQL → 数据湖仓执行 → 结果直接返回</pre></div>
+<div class="say">仍走完整的取数流程（结构化 → 补全 → 消歧 → SQL），只是不进 L1 规划——消歧侧对 1b 同样生效。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §1b · <code>skill-hub-guide</code> 链路 6</p></div>
+</div>`,
+
+"l2a": `<div class="panel">
+<h2>2a BI 业务分析<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">体系的主战场：围绕业务指标进行基本数据观察、趋势洞察、诊断、归因，或直接要求产出分析结果。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 围绕业务指标的基本数据观察 / 趋势洞察 / 诊断 / 归因，或直接要产出
+例子: "转化率为什么下降" "分析 3 月用户趋势" "某产品 12 月月报"
+去向: L1 规划（业务类型 → 模块 → 指标角色）
+      → fetch-data 取数
+      → 四条 workflow: bi-metric-analysis / retention / conversion / cohort
+      → bi-report-generation（如需报告）</pre></div>
+<div class="say">question_type=why 时 bi-metric-analysis 走 3.1 异常检测 → 3.2 维度下拆 → 3.3 时间归因 → 3.4 新增维度分析全链。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §2a · <code>skill-hub-guide</code> 链路 1（含 1.1–1.4 四条子链）</p></div>
+</div>`,
+
+"l2b": `<div class="panel">
+<h2>2b 数据探索<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">没有预设业务问题，目的是探索性地了解数据——描述特征、诊断数据问题、评估可用性。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 无预设业务问题，探索性了解数据（分布 / 缺失 / 异常值 / 相关性 / 质量 / 可用性）
+例子: "看一下数据分布" "检查数据质量" "这份数据能不能用" "为什么数目偏斜这么严重"
+去向: L1 规划（数据探查 + 生成原子子任务序列）
+      → fetch-data 按子任务取数
+      → atomic 自由串接: bi-distribution-analysis / bi-event-analysis / bi-clustering
+      → 无固定 workflow 编排，agent 按计划串</pre></div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §2b · <code>skill-hub-guide</code> 链路 2</p></div>
+</div>`,
+
+"l2c": `<div class="panel">
+<h2>2c 统计建模<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">涉及回归、分类、聚类、预测、特征工程等建模概念，或需要验证某个假设。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 建模概念（回归 / 分类 / 聚类 / 预测 / 特征工程），或训练 / 评估 / 交叉验证，
+      或假设检验 / 显著性分析
+例子: "预测下个月的收入" "对用户做聚类"
+去向: L1 规划（建模目标 / 特征 / 评估口径）
+      → fetch-data 取样本
+      → bi-clustering（聚类 / 象限 / 分层）· bi-comparison-analysis（显著性 / 差异检验）</pre></div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §2c · <code>skill-hub-guide</code> 链路 3</p></div>
+</div>`,
+
+"l2d": `<div class="panel">
+<h2>2d 定量计算<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">按已知公式或算法执行确定性计算——输入 → 公式 → 输出，无需拟合数据。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 已知公式 / 算法的确定性计算（财务指标 / 工程公式 / 统计量 / 数值模拟）
+例子: "算一下这个方案的 ROI" "模拟不同参数下的结果" "计算标准差"
+去向: 跳过 L1（公式明确，无需规划）
+      → fetch-data 取计算所需数据
+      → 直接 atomic: bi-ltv / funnel / conversion-rate / retention-rate / event / distribution</pre></div>
+<div class="say">「公式明确」是跳过规划的前提——若公式本身需要推导（"帮我想个衡量活跃度的指标"），就不属于 2d。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §2d · <code>skill-hub-guide</code> 链路 4</p></div>
+</div>`,
+
+"l2e": `<div class="panel">
+<h2>2e 报告生成<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">上下文中已有分析结论，用户直接要求将其格式化为报告——只做组织，不做新分析。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 上下文中已有分析结论，用户要求格式化为报告
+例子: "把刚才的分析整理成报告" "将结果导出为报告"
+去向: 直接 bi-report-generation（HTML 报告，layout-spec + report_builder.py）</pre></div>
+<div class="say">判定要点是「已有结论」——若结论还不存在，请求实质是 2a（先分析），报告只是交付形式。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §2e · <code>skill-hub-guide</code> 链路 5</p></div>
+</div>`,
+
+"l3": `<div class="panel">
+<h2>3 非数据任务<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">兜底出口：核心意图不涉及数据操作或数据分析——数据技能体系整体不接管。</p>
+<div class="sec"><div class="h">定义 · 例子 · 去向</div>
+<pre class="data">定义: 以上均不命中；代码开发 / 文档写作 / 知识问答 / 闲聊
+例子: "帮我写个脚本" "写一份 AI 领域的调研报告" "今天天气怎样"
+去向: 按通用助手处理，不加载数据技能链路</pre></div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>data-intent-router/SKILL.md</code> §3</p></div>
+</div>`,
+
+/* ───────────────────────── 消歧与反问 ───────────────────────── */
+
+"f0": `<div class="panel">
+<h2>取数触发<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">fetch-data 的 description 定义 5 类触发条件——任何需要业务数据且工作区缺文件的任务都先走这里。</p>
+<div class="sec"><div class="h">5 类触发条件（description 原文归纳）</div>
+<pre class="data">(1) 直接索要指标或记录: "DAU 多少" "上月销售额" "3 月留存率"
+(2) 取数口语: 查 / 拉一下 / 抓数据 / 跑 SQL / 导出 / 缺数据
+(3) 涉及数据来源: 从语义层 / 数据湖仓 / 仓库 / 数据库取
+(4) 问元数据 / 口径: 字段含义 / 表结构 / 两张表怎么关联
+(5) 下游任务在工作区找不到所需数据</pre></div>
+<div class="say">前置检查：工作区已含全部所需数据 → 直接用文件、结束取数流程（同一份数据只获取一次）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/workflows/fetch-data/SKILL.md</code> frontmatter + 前置条件</p></div>
+</div>`,
+
+"f1": `<div class="panel art">
+<h2>Step 1 问题结构化<span class="tag t-art">结构化产物</span></h2>
+<p class="lead">把自然语言问题抽成 5 字段结构化 JSON——取数侧的意图识别产物，后续所有步骤的锚点。</p>
+<div class="sec"><div class="h">实际 Schema（缺失填 null，不省略键）</div>
+<pre class="data">{
+  "question":  "5月 app端某模型对话用户数，人均对话次数和点赞率分别是多少？",
+  "domain":    "产品A",                  <em># 业务域（Step 2.3 硬校验）</em>
+  "metrics":   ["对话用户数", "人均对话次数", "点赞率"],
+  "intention": "查询5月app端某模型的三个指标值",   <em># 最终分析意图</em>
+  "scope":     ["5月", "app端", "某模型"]         <em># 时间 / 地域 / 维度限定</em>
+}
+<em># 落盘 {workdir}/steps/，属于步骤过程产物</em></pre></div>
+<div class="say warn"><b>metrics 写法硬约束：</b>必须用问题中已存在的<b>标准指标名</b>（如 DAU / 次日访问留存率），不做同义改写——自由改写会造成后续步骤理解错位。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>fetch-data/SKILL.md</code> Step 1</p></div>
+</div>`,
+
+"f2": `<div class="panel tool">
+<h2>Step 2 语义补全<span class="tag t-tool">工具与检索</span></h2>
+<p class="lead">按「语义层 &gt; 数据湖仓元数据 &gt; 上下文」三级优先级，补全指标定义与表元数据，落盘 <code>data/raw/</code>。</p>
+<div class="sec"><div class="h">补全产物（实际字段）</div>
+<pre class="data">指标信息 (2.1):
+  metric_name / synonyms / metric_type / is_north_star / is_display
+  formulas: [{ dataset: "<数据表>", formula: "<在该表中的计算方式>" }]
+表元数据 (2.2):
+  table_name / description
+  columns: [{ column_name, dtype, description, topline_value, sample_values }]</pre></div>
+<div class="sec"><div class="h">知识源优先级</div><div class="steps">
+<div class="st in"><b>语义层</b><span>业务校准过的指标 / 维度 / 表语义，直接用</span></div>
+<span class="arw">→</span>
+<div class="st"><b>湖仓元数据</b><span>表 / 列级物理事实，指标语义需自行推断</span></div>
+<span class="arw">→</span>
+<div class="st bad"><b>上下文</b><span>仅两者都无；须精确对应 + 来源标注</span></div>
+</div></div>
+<div class="say red"><b>上下文兜底两条硬约束：</b>精确对应（指标名 / 表名 / 列名完全一致、口径一致，不许"看起来差不多"凑数）+ 来源标注（<code>source: "context"</code> 显式标出便于 Step 3 复核）。三源都拿不到 → 留空，<b>不得</b>用模型先验或想象填充。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>fetch-data/SKILL.md</code> Step 2.1 / 2.2</p></div>
+</div>`,
+
+"f3": `<div class="panel gate">
+<h2>Step 2.3 domain 校验<span class="tag t-gate">人机闸门</span></h2>
+<p class="lead">domain 的硬闸门：必须唯一确定且非空才能继续——为空时<b>不得</b>往下走。</p>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>非空检查</b><span>不是 null / 空串 / 占位符</span></div>
+<span class="arw">→</span>
+<div class="st"><b>唯一性检查</b><span>借表名前缀 / schema.json 的 domain 标注反印证</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>通过</b><span>进 Step 3 歧义消除</span></div>
+<span class="arw">·</span>
+<div class="st bad"><b>为空 / 含糊</b><span>停下问用户（给候选域列表）→ 答复原地写回</span></div>
+</div></div>
+<div class="say">这是取数流程第一个显式人机闸门——「不要替用户臆测 domain」；元数据指向的域与结构化问题不一致时，按"取值含糊"处理同样停下确认。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>fetch-data/SKILL.md</code> Step 2.3</p></div>
+</div>`,
+
+"f4": `<div class="panel">
+<h2>Step 3.1 意图歧义消除<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">两类意图歧义：指标指向不明（问用户）、聚合粒度不明（BI 默认规则兜底，覆盖不了才问）。</p>
+<div class="sec"><div class="h">指标指向不明 → 抛候选问用户</div>
+<pre class="data">"留存率" 同时命中 "访问留存率" / "使用留存率"
+  → 抛出问题 + 全部可用指标，让用户确认
+  → 确认后写回标准 metric_name 到 Step 1 产物</pre></div>
+<div class="sec"><div class="h">聚合粒度不明 → 四条 BI 默认规则</div>
+<table class="mini"><tr><th>场景</th><th>默认</th></tr>
+<tr><td>一段时间内的统计值（人数 / 次数）</td><td>日均值（"对话用户数" → 日均对话用户数）</td></tr>
+<tr><td>环比 / 同比的基础数据</td><td>日均值的均值</td></tr>
+<tr><td>基于用户数的比例（渗透率 = 对话用户数 / 访问用户数）</td><td>先算每日比例，再对每日比例取日均——<b>不是</b>先日均再相除</td></tr>
+<tr><td>基于次数 / 时长的比例（点赞率 = 点赞次数 / 对话次数）</td><td>先求和再相除——<b>不是</b>逐日求比例再平均</td></tr>
+</table></div>
+<div class="say green"><b>粒度默认是「减少反问」的关键设计：</b>四类高频场景全部有默认答案，用户零成本；不被覆盖才抛候选问。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>fetch-data/SKILL.md</code> Step 3.1 · <code>references/intent_ambiguity.md</code></p></div>
+</div>`,
+
+"f5": `<div class="panel">
+<h2>Step 3.2 数据来源歧义消除<span class="tag t-rule">规则判定</span></h2>
+<p class="lead">两类来源歧义：多表都能满足需求（按优先级选或问）、多列都能取到同一维度值（问）。</p>
+<div class="sec"><div class="h">表来源不明 → 优先级</div>
+<pre class="data">候选表选择: 满足需求 > 描述更贴合 > 最准确计算指标（非代理指标）> 概览表兜底
+例: 算"不同端 dau"，表 xxx_index 与 xxx_distribution 都可用 → 按优先级定</pre></div>
+<div class="sec"><div class="h">维度指向不明 → 抛候选</div>
+<pre class="data">"文本对话" 既在 dialog_mode 也在 dialog_type 出现
+  → scope 逐项对照表元数据，多列可取值 → 抛出候选问用户</pre></div>
+<div class="say">歧义清单是开放的：时间口径（"近 30 天"含不含今天、"上月"自然月还是滚动 30 天）、统计口径（用户数是 visit_usercnt 还是 visit_login_usercnt）也要在本步骤一并提出。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>fetch-data/SKILL.md</code> Step 3.2 · <code>references/data_source_ambiguity.md</code></p></div>
+</div>`,
+
+"f6": `<div class="panel art">
+<h2>Step 3.3 消歧结论<span class="tag t-art">结构化产物</span></h2>
+<p class="lead">消歧的强制收尾：无论是否有歧义都要在回复正文写检查结论，并按需原地改写 Step 1 产物。</p>
+<div class="sec"><div class="h">结论五项（写回复正文，不落盘）</div>
+<pre class="data">检查结果: 指标歧义 / 粒度歧义 / 维度歧义 / 数据表来源 / 其他
+用户确认或默认: 原模糊项 → 最终选择
+  例: 留存率 → 访问留存率；对话用户数 → 日均对话用户数（按默认）
+对结构化问题的修改: 字段路径 旧值 → 新值（无修改写"无"）</pre></div>
+<div class="sec"><div class="h">联动回环（触发则回 Step 2 重拉）</div><div class="steps">
+<div class="st in"><b>写回 metric_name</b><span>改名 / 切粒度 / 新增</span></div>
+<span class="arw">→</span>
+<div class="st br"><b>不在 Step 2.1 产物中？</b><span>或换表 / 缺 dataset 口径</span></div>
+<span class="arw">→</span>
+<div class="st bad"><b>回 Step 2</b><span>重新拉指标信息 + 表元数据</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>已齐备</b><span>直接进 Step 4</span></div>
+</div></div>
+<div class="say warn"><b>消歧结论不落盘、写回复正文</b>——它是给人看的审计记录；只有结构化产物的改写才落盘。两者职责分开。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>fetch-data/SKILL.md</code> Step 3.3（含联动说明）</p></div>
+</div>`,
+
+"i1": `<div class="panel gate">
+<h2>反问决策：interaction-strategy<span class="tag t-gate">人机闸门</span></h2>
+<p class="lead">所有反问的统一决策规范——默认行动、反问例外；本页签 f3 / f4 / f5 的「问用户」全部受它约束。</p>
+<div class="sec"><div class="h">三类人机交互</div>
+<table class="mini"><tr><th>类型</th><th>触发</th><th>行为</th></tr>
+<tr><td>Type 1 求助</td><td>信息不足 + 已试工具 + 自排障达上限（执行中 ≤ 2 轮重试）</td><td>按四原则反问</td></tr>
+<tr><td>Type 2 确认计划</td><td>显式触发词（"先规划一下""你打算怎么做"）或报告结构多解</td><td>create_plan 后停下等待</td></tr>
+<tr><td>Type 3 交付</td><td>任务完成</td><td>返回结论与产物</td></tr>
+</table></div>
+<div class="sec"><div class="h">反问四原则</div><div class="steps">
+<div class="st in"><b>说明已知</b><span>先讲已经了解到什么</span></div>
+<span class="arw">→</span>
+<div class="st"><b>精准提问</b><span>只问一个核心问题</span></div>
+<span class="arw">→</span>
+<div class="st"><b>提供选项</b><span>有限候选列出来</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>说明影响</b><span>缺失会如何影响分析</span></div>
+</div></div>
+<div class="sec"><div class="h">反问格式示例（SKILL 原文）</div>
+<pre class="data">通过语义层查询，我找到了两个匹配的指标：
+- visit_usercnt_1d：访问用户数（包含未登录用户）
+- visit_login_usercnt_1d：登录访问用户数
+它们的区别在于是否包含未登录用户。你分析的"用户数"指的是哪一个？</pre></div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/runtime/interaction-strategy/SKILL.md</code></p></div>
+</div>`,
+
+"nl1": `<div class="panel tool">
+<h2>Step 4–6 NL2SQL → 执行<span class="tag t-tool">工具与检索</span></h2>
+<p class="lead">意图的结构化载体最终变成 SQL——prompt 由脚本确定性渲染，模型只做最后一步生成。</p>
+<div class="sec"><div class="h">实际调用</div>
+<pre class="data">python scripts/generate_nl2sql_prompt.py \
+  --problem <Step1 结构化问题 JSON> \      <em># 可能已经过 Step 3 改写</em>
+  --metrics <Step2.1 指标信息 JSON> \
+  --schema  <Step2.2 表元数据 JSON> \
+  --output  <steps/ 下的 NL2SQL prompt>
+
+Step 5: prompt 整段交给模型（不节选不加指令），只输出一条 SELECT
+Step 6: 数据湖仓执行；成功非空 → CSV 落盘返回下游</pre></div>
+<div class="sec"><div class="h">错误回退路径</div>
+<pre class="data">空结果:  回查 Step1 scope/metrics → Step3 是否漏歧义 → Step5 过滤条件 → 重跑
+         (Step3 改过 metrics 名单必须重跑 Step2，否则可从 Step4 起跑)
+执行错误: 语法 / 列不存在 / 类型不匹配 → 回 Step5
+         表 / 列名查不到 → 回 Step2 重新拉元数据
+禁止:   绕过数据湖仓标准通道（改走 shell / psql 自行取数）</pre></div>
+<div class="say green"><b>到这里意图识别完成闭环：</b>自然语言 → 5 字段结构化意图 → 语义补全 → 歧义消除 → 语义上下文 → SQL → 数据。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>fetch-data/SKILL.md</code> Step 4–6 · <code>fetch-data/scripts/generate_nl2sql_prompt.py</code></p></div>
+</div>`
+};
+
+const MAIN_SVG = `<g class="nd" id="gu0" onclick="pick('u0')"><rect x="30" y="120" width="150" height="56" rx="8"/><text x="105" y="141" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">用户请求</text><text x="105" y="158" text-anchor="middle" font-size="10.5" fill="#66757f">自然语言 · 无固定入口</text></g>
+<g class="nd host" id="ga1" onclick="pick('a1')"><rect x="30" y="24" width="185" height="54" rx="8"/><text x="122" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">技能清单装配</text><text x="122" y="62" text-anchor="middle" font-size="10.5" fill="#66757f">31×SKILL.md → 名称+描述</text></g>
+<g class="nd host" id="ga2" onclick="pick('a2')"><rect x="250" y="24" width="185" height="54" rx="8"/><text x="342" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">系统提示约束</text><text x="342" y="62" text-anchor="middle" font-size="10.5" fill="#66757f">MASTER.md · 复杂分析先读 skill</text></g>
+<g class="nd" id="gh1" onclick="pick('h1')"><rect x="250" y="120" width="185" height="56" rx="8"/><text x="342" y="141" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">skill-hub-guide</text><text x="342" y="158" text-anchor="middle" font-size="10.5" fill="#66757f">Meta 入口 · 分层与链路总图</text></g>
+<g class="nd" id="gr1" onclick="pick('r1')"><rect x="470" y="120" width="180" height="56" rx="8"/><text x="560" y="141" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">L0 任务类型判定</text><text x="560" y="158" text-anchor="middle" font-size="10.5" fill="#66757f">data-intent-router · 命中即停</text></g>
+<g class="nd" id="gt1" onclick="pick('t1')"><rect x="690" y="120" width="175" height="56" rx="8"/><text x="777" y="141" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">任务类型 → 链路分流</text><text x="777" y="158" text-anchor="middle" font-size="10.5" fill="#66757f">8 类标签 · 6 条链路</text></g>
+<g class="nd" id="gp1" onclick="pick('p1')"><rect x="30" y="250" width="150" height="56" rx="8"/><text x="105" y="271" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">L1 精化入口</text><text x="105" y="288" text-anchor="middle" font-size="10.5" fill="#66757f">plan-builder · 行动优先</text></g>
+<g class="nd tool" id="gc1" onclick="pick('c1')"><rect x="202" y="250" width="150" height="56" rx="8"/><text x="277" y="271" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1.1 语义层上下文</text><text x="277" y="288" text-anchor="middle" font-size="10.5" fill="#66757f">search_context · CM 管线</text></g>
+<g class="nd" id="gn12" onclick="pick('n12')"><rect x="374" y="250" width="120" height="56" rx="8"/><text x="434" y="271" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1.2 任务类型分流</text><text x="434" y="288" text-anchor="middle" font-size="10.5" fill="#66757f">按 BI / 非 BI 分流</text></g>
+<g class="nd" id="gc2" onclick="pick('c2')"><rect x="516" y="250" width="150" height="56" rx="8"/><text x="591" y="271" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1.3 业务类型判定</text><text x="591" y="288" text-anchor="middle" font-size="10.5" fill="#66757f">ToB/ToC/ToD/Mixed + 子类</text></g>
+<g class="nd" id="gc3" onclick="pick('c3')"><rect x="688" y="250" width="145" height="56" rx="8"/><text x="760" y="271" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1.4 分析模块匹配</text><text x="760" y="288" text-anchor="middle" font-size="10.5" fill="#66757f">modules 目录 · 4 级匹配</text></g>
+<g class="nd" id="gc4" onclick="pick('c4')"><rect x="855" y="250" width="140" height="56" rx="8"/><text x="925" y="271" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1.5 指标细化</text><text x="925" y="288" text-anchor="middle" font-size="10.5" fill="#66757f">指标 + 角色（5 级优先）</text></g>
+<g class="nd tool" id="gc5" onclick="pick('c5')"><rect x="245" y="340" width="165" height="50" rx="8"/><text x="327" y="360" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1.6 数据探查</text><text x="327" y="377" text-anchor="middle" font-size="10.5" fill="#66757f">非 BI · schema/规模/采样</text></g>
+<g class="nd art" id="gpl1" onclick="pick('pl1')"><rect x="245" y="440" width="190" height="56" rx="8"/><text x="340" y="461" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">结构化计划 YAML</text><text x="340" y="478" text-anchor="middle" font-size="10.5" fill="#66757f">intent.question_type = what/why</text></g>
+<g class="nd gate" id="gg1" onclick="pick('g1')"><rect x="470" y="440" width="175" height="56" rx="8"/><text x="557" y="461" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">信息充分性闸门</text><text x="557" y="478" text-anchor="middle" font-size="10.5" fill="#66757f">missing_info 空→执行</text></g>
+<g class="nd gate" id="gq1" onclick="pick('q1')"><rect x="695" y="440" width="175" height="56" rx="8"/><text x="782" y="461" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">人机交互闸门</text><text x="782" y="478" text-anchor="middle" font-size="10.5" fill="#66757f">Type 1 求助 / Type 2 确认</text></g>
+<g class="nd tool" id="gx1" onclick="pick('x1')"><rect x="905" y="440" width="240" height="56" rx="8"/><text x="1025" y="461" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">执行期：意图落地</text><text x="1025" y="478" text-anchor="middle" font-size="10.5" fill="#66757f">fetch-data → workflows → atomic</text></g>
+<g class="nd host" id="gd1" onclick="pick('d1')"><rect x="905" y="340" width="240" height="50" rx="8"/><text x="1025" y="360" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">非规划直达链路</text><text x="1025" y="377" text-anchor="middle" font-size="10.5" fill="#66757f">1a/1b→fetch · 2d→atomic · 2e→报告</text></g>
+<path class="ln" d="M 122 78 V 100 H 300 V 120"/>
+<text x="135" y="96" font-size="10" fill="#8b9aa4">31 技能以「名称+描述」暴露</text>
+<path class="ln side" d="M 342 78 V 120"/>
+<path class="ln" d="M 180 148 H 250"/>
+<path class="ln" d="M 435 148 H 470"/>
+<path class="ln" d="M 650 148 H 690"/>
+<path class="ln" d="M 720 176 V 222 H 115 V 250"/>
+<text x="400" y="216" font-size="11" fill="#8b9aa4" text-anchor="middle">2a / 2b / 2c → L1 规划</text>
+<path class="ln" d="M 830 176 V 208 H 1025 V 340"/>
+<text x="928" y="202" font-size="11" fill="#8b9aa4" text-anchor="middle">1a / 1b / 2d / 2e 不经 L1</text>
+<path class="ln" d="M 180 278 H 202"/>
+<path class="ln" d="M 352 278 H 374"/>
+<path class="ln" d="M 494 278 H 516"/>
+<path class="ln" d="M 666 278 H 688"/>
+<path class="ln" d="M 833 278 H 855"/>
+<path class="ln" d="M 434 306 V 330 H 327 V 340"/>
+<text x="442" y="322" font-size="10" fill="#8b9aa4">非 BI（2b / 2c）→ 1.6</text>
+<path class="ln" d="M 310 390 V 440"/>
+<path class="ln" d="M 870 306 V 405 H 370 V 440"/>
+<path class="ln" d="M 435 468 H 470"/>
+<path class="ln" d="M 645 480 H 695"/>
+<text x="670" y="473" font-size="10" fill="#8b9aa4" text-anchor="middle">缺信息</text>
+<path class="ln a" d="M 645 455 H 662 V 425 H 1025 V 440"/>
+<text x="840" y="419" font-size="11" fill="#4f9f6f" text-anchor="middle">missing_info 为空 → 直接执行</text>
+<path class="ln" d="M 870 468 H 905"/>
+<path class="ln side" d="M 770 496 V 508 H 340 V 496"/>
+<text x="555" y="522" font-size="11" fill="#8b9aa4" text-anchor="middle">拿到答复 → 写回计划</text>
+<g transform="translate(30,535)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#f4f8fb" stroke="#8fa8bd"/><text x="19" y="11" font-size="12" fill="#5a6b76">规则判定（LLM 按 SKILL 显式规则执行）</text><rect x="250" y="0" width="13" height="13" rx="3" fill="#eaf7ef" stroke="#5aa877"/><text x="269" y="11" font-size="12" fill="#5a6b76">工具与检索（语义层 MCP / 探查 / 脚本）</text><rect x="470" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="489" y="11" font-size="12" fill="#5a6b76">人机闸门（反问 / 确认 / 等待）</text><rect x="645" y="0" width="13" height="13" rx="3" fill="#fdf0f1" stroke="#cf6a7a"/><text x="664" y="11" font-size="12" fill="#5a6b76">结构化产物（意图载体）</text><rect x="790" y="0" width="13" height="13" rx="3" fill="#f2f3f5" stroke="#a9b2ba"/><text x="809" y="11" font-size="12" fill="#5a6b76">宿主装配</text></g>
+<text x="30" y="567" font-size="12" fill="#8b9aa4">意图识别分两级：L0 定任务类型（8 类），L1 才把「分析」细化成业务类型 → 模块 → 指标角色；2d / 1a / 1b / 2e 在 L0 后直达执行</text>
+<text x="30" y="586" font-size="12" fill="#8b9aa4">反问是例外：先语义层检索消歧、再默认规则兜底（聚合粒度 4 条 BI 默认），仍不可解才停下来问用户——详见「消歧与反问」页签</text>`;
+
+const ROUTER_SVG = `<g class="nd" id="gs0" onclick="pick('s0')"><rect x="30" y="100" width="150" height="64" rx="8"/><text x="105" y="124" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">判定输入</text><text x="105" y="142" text-anchor="middle" font-size="10.5" fill="#66757f">用户原句 · LLM 对照规则</text></g>
+<g class="nd" id="grc1" onclick="pick('rc1')"><rect x="240" y="60" width="200" height="72" rx="8"/><text x="340" y="84" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">① 查询类？</text><text x="340" y="102" text-anchor="middle" font-size="10.5" fill="#66757f">获取数据或定义</text><text x="340" y="118" text-anchor="middle" font-size="10.5" fill="#66757f">不涉及分析推理</text></g>
+<g class="nd" id="grc2" onclick="pick('rc2')"><rect x="240" y="175" width="200" height="72" rx="8"/><text x="340" y="199" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">② 分析类？</text><text x="340" y="217" text-anchor="middle" font-size="10.5" fill="#66757f">分析 / 建模 / 计算 / 报告</text><text x="340" y="233" text-anchor="middle" font-size="10.5" fill="#66757f">5 个子类逐一对照</text></g>
+<g class="nd" id="grc3" onclick="pick('rc3')"><rect x="240" y="290" width="200" height="56" rx="8"/><text x="340" y="311" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">③ 非数据任务</text><text x="340" y="328" text-anchor="middle" font-size="10.5" fill="#66757f">兜底：代码 / 文档 / 问答 / 闲聊</text></g>
+<g class="nd gate" id="gbnd" onclick="pick('bnd')"><rect x="30" y="210" width="160" height="100" rx="8" stroke-dasharray="7 4"/><text x="110" y="238" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">边界：复合意图</text><text x="110" y="258" text-anchor="middle" font-size="10.5" fill="#66757f">「查 DAU 并分析</text><text x="110" y="274" text-anchor="middle" font-size="10.5" fill="#66757f">下降原因」</text><text x="110" y="294" text-anchor="middle" font-size="10.5" fill="#66757f">→ 以分析类为准（2a）</text></g>
+<g class="nd" id="gl1a" onclick="pick('l1a')"><rect x="500" y="24" width="260" height="56" rx="8"/><text x="630" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1a 元数据查询</text><text x="630" y="62" text-anchor="middle" font-size="10.5" fill="#66757f">字段含义 · 表结构 · 关联 → fetch-data 直接答</text></g>
+<g class="nd" id="gl1b" onclick="pick('l1b')"><rect x="500" y="92" width="260" height="56" rx="8"/><text x="630" y="113" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">1b 数据查询</text><text x="630" y="130" text-anchor="middle" font-size="10.5" fill="#66757f">「昨天 DAU 多少」→ fetch-data → SQL 直接返回</text></g>
+<g class="nd" id="gl2a" onclick="pick('l2a')"><rect x="500" y="164" width="260" height="56" rx="8"/><text x="630" y="185" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">2a BI 业务分析</text><text x="630" y="202" text-anchor="middle" font-size="10.5" fill="#66757f">诊断归因 · 日周月报 → L1 → 4 条 workflow</text></g>
+<g class="nd" id="gl2b" onclick="pick('l2b')"><rect x="500" y="232" width="260" height="56" rx="8"/><text x="630" y="253" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">2b 数据探索</text><text x="630" y="270" text-anchor="middle" font-size="10.5" fill="#66757f">分布 · 质量 · 可用性 → L1 → atomic 串接</text></g>
+<g class="nd" id="gl2c" onclick="pick('l2c')"><rect x="500" y="300" width="260" height="56" rx="8"/><text x="630" y="321" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">2c 统计建模</text><text x="630" y="338" text-anchor="middle" font-size="10.5" fill="#66757f">聚类 · 预测 · 假设检验 → L1 → clustering 等</text></g>
+<g class="nd" id="gl2d" onclick="pick('l2d')"><rect x="500" y="368" width="260" height="56" rx="8"/><text x="630" y="389" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">2d 定量计算</text><text x="630" y="406" text-anchor="middle" font-size="10.5" fill="#66757f">已知公式 · ROI/标准差 → 跳过 L1 直接 atomic</text></g>
+<g class="nd" id="gl2e" onclick="pick('l2e')"><rect x="500" y="436" width="260" height="56" rx="8"/><text x="630" y="457" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">2e 报告生成</text><text x="630" y="474" text-anchor="middle" font-size="10.5" fill="#66757f">已有结论格式化 → bi-report-generation</text></g>
+<g class="nd" id="gl3" onclick="pick('l3')"><rect x="500" y="504" width="260" height="56" rx="8"/><text x="630" y="525" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">3 非数据任务</text><text x="630" y="542" text-anchor="middle" font-size="10.5" fill="#66757f">不进数据技能体系 · 通用处理</text></g>
+<path class="ln" d="M 180 132 H 240"/>
+<path class="ln" d="M 340 132 V 175"/>
+<text x="348" y="158" font-size="11" fill="#8b9aa4">未命中</text>
+<path class="ln" d="M 340 247 V 290"/>
+<text x="348" y="273" font-size="11" fill="#8b9aa4">未命中</text>
+<path class="ln" d="M 440 75 H 500"/>
+<text x="448" y="68" font-size="11" fill="#8b9aa4" text-anchor="end">命中</text>
+<path class="ln" d="M 440 115 H 500"/>
+<path class="ln" d="M 440 211 H 470"/>
+<text x="452" y="205" font-size="11" fill="#8b9aa4" text-anchor="end">命中</text>
+<path class="bus" d="M 470 192 V 464"/>
+<path class="ln" d="M 470 192 H 500"/>
+<path class="ln" d="M 470 260 H 500"/>
+<path class="ln" d="M 470 328 H 500"/>
+<path class="ln" d="M 470 396 H 500"/>
+<path class="ln" d="M 470 464 H 500"/>
+<path class="ln" d="M 340 346 V 532 H 500"/>
+<text x="348" y="445" font-size="11" fill="#8b9aa4">兜底</text>
+<path class="ln side" d="M 190 255 H 215 V 153 H 336"/>
+<text x="222" y="148" font-size="10" fill="#c99a30">不停留</text>
+<g transform="translate(30,592)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#f4f8fb" stroke="#8fa8bd"/><text x="19" y="11" font-size="12" fill="#5a6b76">规则判定</text><rect x="100" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="119" y="11" font-size="12" fill="#5a6b76">边界覆盖规则</text></g>
+<text x="30" y="622" font-size="12" fill="#8b9aa4">「依次检查，命中即停」：查询在前、分析在后——顺序本身是设计决策，配合复合意图规则保证「含分析必进规划」</text>
+<text x="30" y="641" font-size="12" fill="#8b9aa4">判定完全由 LLM 对照规则文本执行（无分类模型 / 无向量检索），每个子类的例句是规则的 few-shot 锚点</text>`;
+
+const DISAMBIG_SVG = `<g class="nd" id="gf0" onclick="pick('f0')"><rect x="30" y="60" width="150" height="64" rx="8"/><text x="105" y="84" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">需要取数</text><text x="105" y="102" text-anchor="middle" font-size="10.5" fill="#66757f">5 类触发 · 工作区缺数据</text></g>
+<g class="nd art" id="gf1" onclick="pick('f1')"><rect x="225" y="60" width="175" height="64" rx="8"/><text x="312" y="84" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 1 问题结构化</text><text x="312" y="102" text-anchor="middle" font-size="10.5" fill="#66757f">5 字段 JSON → steps/</text></g>
+<g class="nd tool" id="gf2" onclick="pick('f2')"><rect x="445" y="60" width="175" height="64" rx="8"/><text x="532" y="84" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 2 语义补全</text><text x="532" y="102" text-anchor="middle" font-size="10.5" fill="#66757f">语义层 &gt; 湖仓 &gt; 上下文</text></g>
+<g class="nd gate" id="gf3" onclick="pick('f3')"><rect x="665" y="60" width="175" height="64" rx="8"/><text x="752" y="84" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 2.3 domain 校验</text><text x="752" y="102" text-anchor="middle" font-size="10.5" fill="#66757f">非空 · 唯一确定</text></g>
+<g class="nd" id="gf4" onclick="pick('f4')"><rect x="885" y="60" width="190" height="64" rx="8"/><text x="980" y="84" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 3.1 意图歧义</text><text x="980" y="102" text-anchor="middle" font-size="10.5" fill="#66757f">指向不明 · 粒度不明</text></g>
+<g class="nd" id="gf5" onclick="pick('f5')"><rect x="885" y="170" width="190" height="64" rx="8"/><text x="980" y="194" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 3.2 来源歧义</text><text x="980" y="212" text-anchor="middle" font-size="10.5" fill="#66757f">表来源 · 维度指向</text></g>
+<g class="nd art" id="gf6" onclick="pick('f6')"><rect x="665" y="170" width="175" height="64" rx="8"/><text x="752" y="194" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 3.3 消歧结论</text><text x="752" y="212" text-anchor="middle" font-size="10.5" fill="#66757f">正文说明 · 原地改写 · 联动</text></g>
+<g class="nd gate" id="gi1" onclick="pick('i1')"><rect x="885" y="300" width="250" height="80" rx="8"/><text x="1010" y="327" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">反问决策</text><text x="1010" y="346" text-anchor="middle" font-size="10.5" fill="#66757f">interaction-strategy</text><text x="1010" y="363" text-anchor="middle" font-size="10.5" fill="#66757f">默认行动 · Type 1 三条件 · 四原则</text></g>
+<g class="nd tool" id="gnl1" onclick="pick('nl1')"><rect x="445" y="300" width="380" height="80" rx="8"/><text x="635" y="327" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">Step 4–6 NL2SQL → 执行</text><text x="635" y="346" text-anchor="middle" font-size="10.5" fill="#66757f">意图载体 → generate_nl2sql_prompt.py → 一条 SELECT → 数据湖仓</text><text x="635" y="363" text-anchor="middle" font-size="10.5" fill="#66757f">空结果 / 执行错误各有回退路径</text></g>
+<path class="ln" d="M 180 92 H 225"/>
+<path class="ln" d="M 400 92 H 445"/>
+<path class="ln" d="M 620 92 H 665"/>
+<path class="ln" d="M 840 92 H 885"/>
+<text x="862" y="86" font-size="10" fill="#8b9aa4" text-anchor="middle">校验通过</text>
+<path class="ln" d="M 980 124 V 170"/>
+<path class="ln" d="M 885 202 H 840"/>
+<path class="ln" d="M 752 234 V 300"/>
+<text x="760" y="268" font-size="11" fill="#8b9aa4">无歧义 / 已消歧</text>
+<path class="ln side" d="M 665 215 H 532 V 124"/>
+<text x="575" y="229" font-size="11" fill="#8b9aa4" text-anchor="middle">联动回环：改名 / 换表 → 回 Step 2 重拉</text>
+<path class="ln side" d="M 665 195 H 280 V 124"/>
+<text x="472" y="189" font-size="11" fill="#8b9aa4" text-anchor="middle">原地改写 Step 1 产物</text>
+<path class="ln side" d="M 840 78 H 860 V 270 H 1010 V 300"/>
+<text x="868" y="262" font-size="11" fill="#8b9aa4">为空 / 含糊 → 停下问</text>
+<path class="ln side" d="M 1075 100 H 1095 V 300"/>
+<path class="ln side" d="M 980 234 V 300"/>
+<text x="988" y="272" font-size="11" fill="#8b9aa4">歧义且无默认 → 问</text>
+<path class="ln side" d="M 1010 380 V 420 H 350 V 124"/>
+<text x="680" y="433" font-size="11" fill="#8b9aa4" text-anchor="middle">答复写回 domain / metric_name</text>
+<g transform="translate(30,462)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#f4f8fb" stroke="#8fa8bd"/><text x="19" y="11" font-size="12" fill="#5a6b76">规则判定</text><rect x="100" y="0" width="13" height="13" rx="3" fill="#eaf7ef" stroke="#5aa877"/><text x="119" y="11" font-size="12" fill="#5a6b76">工具与检索</text><rect x="200" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="219" y="11" font-size="12" fill="#5a6b76">人机闸门</text><rect x="283" y="0" width="13" height="13" rx="3" fill="#fdf0f1" stroke="#cf6a7a"/><text x="302" y="11" font-size="12" fill="#5a6b76">结构化产物</text><rect x="380" y="0" width="13" height="13" rx="3" fill="#f2f3f5" stroke="#a9b2ba"/><text x="399" y="11" font-size="12" fill="#5a6b76">宿主装配</text></g>
+<text x="30" y="492" font-size="12" fill="#8b9aa4">取数侧的意图闭环：自然语言 → 5 字段结构化 JSON → 语义补全 → 歧义消除（默认规则优先、反问兜底）→ NL2SQL</text>
+<text x="30" y="511" font-size="12" fill="#8b9aa4">消歧结论必须写进回复正文（即便无歧义）——给人看的审计记录；结构化产物的改写才落盘</text>`;
+
+let curTab = 'main';
+
+const DEFS = '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
+  + 'markerHeight="6" orient="auto-start-reverse">'
+  + '<path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/></marker>';
+
+const TABS = {
+  main:    { svg: MAIN_SVG,    box: '0 0 1200 600' },
+  router:  { svg: ROUTER_SVG,  box: '0 0 1200 660' },
+  disambig:{ svg: DISAMBIG_SVG, box: '0 0 1200 530' },
+};
+
+function renderMap(){
+  const map = document.getElementById('map');
+  map.setAttribute('viewBox', TABS[curTab].box);
+  map.innerHTML = '<defs>' + DEFS + '</defs>' + TABS[curTab].svg;
+}
+
+function switchTab(tab){
+  curTab = tab;
+  document.getElementById('tab-main').className     = tab === 'main'     ? 'on' : '';
+  document.getElementById('tab-router').className   = tab === 'router'   ? 'on' : '';
+  document.getElementById('tab-disambig').className = tab === 'disambig' ? 'on' : '';
+  renderMap();
+  document.getElementById('hint').textContent = '点击上方任意一个方块，展开它内部的子流程、输入输出契约与代码位置';
+  document.getElementById('detail').innerHTML = '';
+}
+
+function pick(id){
+  if(!NODES[id]) return;
+  document.querySelectorAll('.nd').forEach(function(n){ n.classList.remove('sel'); });
+  const el = document.getElementById('g' + id);
+  if(el) el.classList.add('sel');
+  document.getElementById('detail').innerHTML = NODES[id];
+  const t = el ? el.querySelector('text').textContent : id;
+  document.getElementById('hint').textContent = '当前在看：' + t;
+  document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+document.addEventListener('DOMContentLoaded', function(){ switchTab('main'); });
+</script>
+</body>
+</html>

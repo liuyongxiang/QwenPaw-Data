@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QwenPaw-Data 数据源接入与查数链路（可下钻）</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; font-size: 14px; line-height: 1.7;
+         color: #233; margin: 0; background: #fbfcfd; padding: 0 0 60px; }
+  h1 { font-size: 20px; text-align: center; margin: 20px 0 4px; }
+  .sub { text-align: center; color: #78868e; font-size: 13px; margin-bottom: 14px; }
+
+  .tabs { display: flex; justify-content: center; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
+  .tabs button { font: inherit; font-size: 13.5px; padding: 6px 18px; border: 1px solid #b9c4cc;
+                 background: #fff; color: #456; border-radius: 20px; cursor: pointer; }
+  .tabs button:hover { background: #eef3f7; }
+  .tabs button.on { background: #3d6b8f; color: #fff; border-color: #3d6b8f; }
+
+  .mapwrap { max-width: 1240px; margin: 0 auto; padding: 0 10px; }
+  svg.main { width: 100%; height: auto; display: block; background: #fff;
+             border: 1px solid #dbe2e7; border-radius: 10px; }
+
+  .nd rect { fill: #f4f8fb; stroke: #8fa8bd; stroke-width: 1.2px; cursor: pointer; transition: all .12s; }
+  .nd text { cursor: pointer; pointer-events: none; }
+  .nd:hover rect { fill: #e3eef7; stroke: #3d6b8f; stroke-width: 1.8px; }
+  .nd.sel rect { fill: #dbe9f5; stroke: #2b5773; stroke-width: 2.4px; }
+  .nd.add rect { fill: #eaf7ef; stroke: #5aa877; }
+  .nd.chg rect { fill: #fdf4e5; stroke: #c99a30; }
+  .nd.fix rect { fill: #fdf0f1; stroke: #cf6a7a; }
+  .nd.ex  rect { fill: #f5f0fa; stroke: #8a6fbf; }
+  .nd.add:hover rect { fill: #d8f0e2; }
+  .nd.chg:hover rect { fill: #faeacd; }
+  .nd.fix:hover rect { fill: #fbe1e4; }
+  .nd.ex:hover  rect { fill: #ece2f7; }
+
+  path.ln { fill: none; stroke: #93a5b3; stroke-width: 1.5px; marker-end: url(#ah); }
+  path.ln.side { stroke: #b3c0ca; stroke-dasharray: 5 3; }
+  path.ln.fb { stroke: #7fbf8f; stroke-width: 2px; stroke-dasharray: 6 4; marker-end: url(#ahg); }
+  .lbl { font-size: 12px; fill: #6b7c88; }
+
+  .detail { max-width: 1240px; margin: 16px auto 0; padding: 0 10px; }
+  .panel { background: #fff; border: 1px solid #dbe2e7; border-left: 5px solid #3d6b8f;
+           border-radius: 10px; padding: 16px 20px 18px; }
+  .panel.add { border-left-color: #4f9f6f; }
+  .panel.chg { border-left-color: #c99a30; }
+  .panel.fix { border-left-color: #cf6a7a; }
+  .panel.ex  { border-left-color: #8a6fbf; }
+  .panel h2 { margin: 0 0 2px; font-size: 19px; }
+  .panel .lead { color: #5a6b76; font-size: 13.5px; margin: 0 0 12px; }
+
+  .tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 3px;
+         vertical-align: 3px; margin-left: 8px; border: 1px solid; }
+  .t-keep { background: #e4e9e4; color: #3c523c; border-color: #9db29d; }
+  .t-new  { background: #d9f0d9; color: #1a5c1a; border-color: #7fbf7f; }
+  .t-chg  { background: #fdf4e5; color: #7a5a10; border-color: #d9b45c; }
+  .t-fix  { background: #fbd5da; color: #8c1f2a; border-color: #d98a94; }
+  .t-ex   { background: #f0e9f9; color: #4a3570; border-color: #b39ddb; }
+
+  .sec { margin: 14px 0 0; }
+  .sec > .h { font-size: 13px; color: #3d6b8f; font-weight: bold; margin-bottom: 6px;
+              padding-bottom: 3px; border-bottom: 1px dashed #d5dee5; }
+  .say { border-left: 3px solid #9fb0bd; background: #f6f8fa; padding: 8px 12px;
+         margin: 8px 0; font-size: 13.5px; border-radius: 0 5px 5px 0; }
+  .say.warn { border-left-color: #d0a13c; background: #fdf9ef; }
+  .say.red  { border-left-color: #cf6a7a; background: #fdf3f4; }
+  .say.green{ border-left-color: #4f9f6f; background: #f3f9f5; }
+
+  pre.data { background: #f4f6f8; border: 1px solid #d5dde3; border-radius: 6px; padding: 8px 11px;
+             font-size: 12.2px; line-height: 1.55; overflow-x: auto;
+             font-family: Consolas, "Courier New", monospace; margin: 6px 0; color: #2a3b47; }
+  pre.data em { font-style: normal; color: #7a8a96; } /* 注释灰 */
+
+  .steps { display: flex; gap: 0; flex-wrap: wrap; align-items: stretch; }
+  .st { flex: 1 1 165px; border: 1px solid #b9c8d4; border-radius: 7px; padding: 8px 10px;
+        background: #f4f8fb; font-size: 13px; margin: 4px 0; }
+  .st > b { display: block; font-size: 13px; margin-bottom: 2px; }
+  .st > span { color: #5f6f7a; font-size: 12.3px; }
+  .st.in  { background: #eaf2f8; border-color: #8fa8bd; }
+  .st.out { background: #eaf7ef; border-color: #7fbf8f; }
+  .st.br  { background: #fdf4e5; border-color: #d9b45c; }
+  .st.bad { background: #fdf0f1; border-color: #cf6a7a; }
+  .arw { align-self: center; color: #93a5b3; font-weight: bold; padding: 0 6px; font-size: 15px; }
+
+  table.mini { border-collapse: collapse; width: 100%; font-size: 13px; margin: 4px 0; }
+  table.mini th, table.mini td { border: 1px solid #d8e0e6; padding: 5px 9px; text-align: left; vertical-align: top; }
+  table.mini th { background: #f0f4f7; }
+  code { background: #eef1f4; padding: 1px 4px; border-radius: 3px; font-size: 12.3px; }
+  .hint { text-align: center; color: #8b9aa4; font-size: 12.5px; margin: 10px 0 0; }
+  @media print { .tabs { display: none; } }
+</style>
+</head>
+<body>
+
+<h1>QwenPaw-Data 数据源接入与查数链路（可下钻）</h1>
+<div class="sub">注册侧：类型化配置校验 → 连测 → 凭证落库 → 语义建图 · 运行侧：fetch-data 生成 SQL → 只读守卫 → 按数据源类型路由执行器直连 · 点任意方块看子流程与真实输入输出</div>
+
+<div class="tabs">
+  <button id="tab-full" class="on" onclick="switchTab('full')">全链路（注册 → 查数）</button>
+  <button id="tab-gen" onclick="switchTab('gen')">SQL 生成侧（fetch-data 六步 · 含实例）</button>
+  <button id="tab-route" onclick="switchTab('route')">查数路由侧（类型适配 · 含实例）</button>
+</div>
+
+<div class="mapwrap">
+  <svg class="main" id="map" viewBox="0 0 1200 505" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/>
+      </marker>
+      <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#7fbf8f"/>
+      </marker>
+    </defs>
+  </svg>
+  <p class="hint" id="hint">点击上方任意一个方块，展开它内部的子流程、输入输出数据结构与代码位置</p>
+</div>
+
+<div class="detail" id="detail"></div>
+
+<script>
+const NODES = {
+/* ═════════════════════════ Tab 1 · 全链路 ═════════════════════════ */
+
+"r1": `<div class="panel">
+<h2>① 注册校验<span class="tag t-keep">确定性</span></h2>
+<p class="lead">用户在前端填「数据源类型 + 连接信息」——类型下拉与表单字段由 pydantic 配置模型动态渲染，新增类型只改一个文件，前端零改动。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">GET /api/semantic-config/datasource/types   <em>← 表单元数据单点导出</em>
+  → {items: [{type: "mysql", label: "MySQL",
+              fields: [{name: "host", type: "string", required: true},
+                       {name: "password", type: "string", required: true, secret: true}, …]},
+             …]}                              <em>← secret 字段前端打码</em>
+
+POST /api/semantic-config/datasource         <em>← 实例：examples/mysql/datasource.example.json</em>
+{ "datasource_name": "MySQL Olist - e-commerce demo",
+  "datasource_type": "mysql",
+  "config": {"host": "127.0.0.1", "port": 3306, "database": "olist_example",
+             "user": "root", "password": "123456"} }
+
+validate_config("mysql", config)
+  → MysqlConfig.model_validate(config)        <em>← extra="forbid"：多传/拼错 key 直接 400</em>
+  → 规范化 dict（落库形态）</pre></div>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>选类型</b><span>/types 端点动态下拉，8 种类型</span></div>
+<span class="arw">→</span>
+<div class="st"><b>填 config</b><span>按所选类型的 pydantic schema 逐字段</span></div>
+<span class="arw">→</span>
+<div class="st"><b>校验</b><span>BadRequestError(400) 带字段级错误信息</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>交给连测</b><span>② 存盘前先真实连一次</span></div>
+</div></div>
+<div class="say">8 种类型 5 份模型——StarRocks / Doris / TiDB 与 MySQL 共用 <code>MysqlConfig</code>（线协议兼容）；PG 系 key 叫 <code>dbname</code>、MySQL 系叫 <code>database</code>，命名贴合各自原生驱动。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>semantic_config/routers/datasource_router.py:83</code>（POST 与 /types）· <code>models/datasource_config.py:100</code>（CONFIG_MODEL_BY_TYPE）</p></div>
+</div>`,
+
+"r2": `<div class="panel">
+<h2>② 连接测试<span class="tag t-keep">确定性</span></h2>
+<p class="lead">存盘前后各测一次：用目标类型的原生驱动真实连一次库，再做最轻量的探测——连上 + SELECT 1 即判定成功。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">POST /api/semantic-config/datasource/test-connection
+  body: {datasource_type: "mysql", config: {…}}
+  → asyncio.to_thread(_test_mysql, cfg)      <em>← 阻塞驱动放线程池</em>
+     pymysql.connect(connect_timeout=10) → SELECT 1
+     → count(*) FROM information_schema.tables   <em>← 尽力而为，失败不影响判定</em>
+  → asyncio.wait_for(…, timeout=15)          <em>← 整体兜底（覆盖 ODPS 等无 connect_timeout 的驱动）</em>
+
+响应: {"success": true,
+       "message": "connected to 127.0.0.1:3306/olist_example",
+       "tables_found": 3, "elapsed_ms": 42}</pre></div>
+<div class="sec"><div class="h">类型 → 连测函数（_TESTER_BY_TYPE 分发）</div>
+<pre class="data">postgresql          → _test_postgres   (psycopg)
+mysql/starrocks/
+doris/tidb          → _test_mysql      (pymysql)     <em>← MySQL 兼容引擎共用探测通道</em>
+odps                → _test_odps       (exist_project 最轻鉴权探测)
+duckdb / sqlite     → _test_duckdb / _test_sqlite    <em>← 校验文件存在 + 只读打开数表</em></pre></div>
+<div class="say warn"><b>表数量是「尽力而为」：</b>账号无 information_schema 权限时 <code>tables_found=null</code>，不影响连接判定。</div>
+<div class="say"><b>错误信息双保险脱敏：</b><code>_redact_str</code> 先跑一遍，再把 config 里的 password / access_key 等值逐个替换成 <code>***</code>——防止驱动把凭证回显在报错里。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>semantic_config/services/connection_tester.py:158</code>（_TESTER_BY_TYPE）</p></div>
+</div>`,
+
+"r3": `<div class="panel">
+<h2>③ 凭证落库<span class="tag t-keep">确定性</span></h2>
+<p class="lead">凭证以 JSON 文本存进 semantic_config.db 的 datasource 表——这是全系统唯一的连接信息来源，后续所有连库只从这里读。</p>
+<div class="sec"><div class="h">存储与读回（实际数据）</div>
+<pre class="data">datasource 表（SQLite）:
+  id INTEGER PK · datasource_id TEXT · datasource_type TEXT
+  config TEXT(=JSON) · is_deleted(软删)
+
+读回（executor 连库时）:
+  load_datasource_config("mysql-olist-demo")
+  → SELECT datasource_type, config FROM datasource
+      WHERE (datasource_id = ? OR CAST(id AS TEXT) = ?) AND is_deleted = 0
+  → {"host": "127.0.0.1", "port": 3306, "database": "olist_example",
+     "user": "root", "password": "***",
+     "_datasource_type": "mysql"}              <em>← 附带类型，⑨ 路由的判型依据</em></pre></div>
+<div class="say red"><b>「不回退环境变量」是刻意设计：</b>查不到 config 一律失败——宁可报错也不悄悄连错库。另注意注册侧类型枚举是 <code>postgresql</code>、建图侧 registry key 是 <code>postgres</code>，两套词表并存（见「查数路由侧 · 适配机制总览」）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>context_manager/api/datasource_active_api.py:90</code>（load_datasource_config）· <code>semantic_config/db.py</code></p></div>
+</div>`,
+
+"r4": `<div class="panel">
+<h2>④ 语义建图（可选）<span class="tag t-keep">确定性</span></h2>
+<p class="lead">把数据源的表/列/外键反射进 Neo4j 图谱，供 Agent 生成 SQL 时检索表语义——走独立的 Adapter 框架，与查数侧不共用代码。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">import_runner: get_adapter(request.source, request.datasource_id)
+  → registry 按 config.connection.type 查工厂:
+      postgres / hologres        → PostgresAdapter
+      mysql / starrocks / doris / tidb → MySQLAdapter
+      odps → OdpsAdapter · ddl → DDLAdapter(纯文本,不连库) · csv → CSVAdapter
+      sqlite / duckdb / bigquery → 各自 Connector
+  → adapter.extract_metadata(schemas)
+  → PhysicalManifest{db_id, schema, tables, columns, fks}
+  → write_physical → Neo4j (:Table/:Column/HAS_COLUMN …)</pre></div>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>registry 查工厂</b><span>connection.type 字符串 → 适配器</span></div>
+<span class="arw">→</span>
+<div class="st"><b>反射</b><span>SQLAlchemy inspect 表/列/FK</span></div>
+<span class="arw">→</span>
+<div class="st"><b>分区键探测</b><span>候选列 ds/dt/stat_date/data_date</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>写图</b><span>TableRecord/ColumnRecord 进 Neo4j</span></div>
+</div></div>
+<div class="say"><b>模板方法复用：</b><code>UniversalConnector</code> 把建引擎、连接池（pool_size=5、pool_pre_ping）、inspect 反射放在基类；方言差异下沉到 <code>_engine_url()</code> / <code>_load_column_comments()</code> 等覆写点。</div>
+<div class="say red"><b>诚实校准——建图侧支持面比查数侧宽：</b>bigquery / ddl / csv 只在 registry 注册；BigQuery 目前<b>能建图、不能查数</b>（executor 无对应后端）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>graph/adapters/registry.py:14</code>（_FACTORIES）· <code>universal.py:39</code>（UniversalConnector）· <code>import_runner.py:59</code>（get_adapter 调用）</p></div>
+</div>`,
+
+"a1": `<div class="panel">
+<h2>⑤ 数据源生效<span class="tag t-keep">确定性</span></h2>
+<p class="lead">两条互补的生效路径：全局切换（active）与会话注入（metadata）——工具调用时注入优先，没注入才用 active 默认。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">路径 A · 全局切换:
+  PUT /api/datasources/active {"datasource_id": "mysql-olist-demo"}
+  → 校验存在 → _active_datasource_id（内存全局量）
+
+路径 B · 会话注入（主路径）:
+  前端建会话 POST /chats {"datasource_id": "mysql-olist-demo", …}
+  → host 存 session.datasource_id → request_context
+  → 工具调用前中间件改写 tool_call.input:
+      {"sql": "SELECT …", "metadata": {"datasource_id": "mysql-olist-demo"}}
+  → cm_server._meta_datasource_id 提取
+      优先级: 显式参数 &gt; metadata.datasource_id &gt; metadata.ds_id</pre></div>
+<div class="sec"><div class="h">注入链路子流程</div><div class="steps">
+<div class="st in"><b>会话创建</b><span>前端选数据源，随会话保存</span></div>
+<span class="arw">→</span>
+<div class="st"><b>识别 CM 工具</b><span>仅 URL 含 /mcp/v1/cm 的客户端</span></div>
+<span class="arw">→</span>
+<div class="st"><b>注入 metadata</b><span>改写 tool_call.input（LLM 无感）</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>HTTP 带参</b><span>body.datasource_id 进 executor</span></div>
+</div></div>
+<div class="say">两条路互为兜底：都没拿到 → execute_sql 直接返回「未指定当前数据源」——不猜、不回退。cm_execute_sql 还有第三级兜底：按 SQL 引用的表从图谱反推（warehouse 表→ODPS）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/datasource_active_api.py:305</code> · <code>host/core/mcp_cm.py:110</code>（inject_datasource_metadata）· <code>mcp/cm_server.py:229</code></p></div>
+</div>`,
+
+"g1": `<div class="panel add">
+<h2>⑥ Agent 取数<span class="tag t-new">LLM 参与</span></h2>
+<p class="lead">fetch-data 技能把自然语言取数需求变成一条可执行 SELECT——触发词覆盖「查 / 取 / 拉 / 跑 SQL / 缺数据」等口语；六步展开见「SQL 生成侧」页签。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">输入: 用户自然语言问题
+     + {workdir} 数据检查 → 所需文件已齐则跳过取数，直接用
+落盘产物:
+  {workdir}/steps/      结构化问题 JSON · NL2SQL prompt · 最终 SQL
+  {workdir}/data/raw/   指标信息 JSON · 表元数据 JSON</pre></div>
+<div class="sec"><div class="h">六步骨架</div><div class="steps">
+<div class="st in"><b>①问题结构化</b><span>自然语言→五字段 JSON</span></div>
+<span class="arw">→</span>
+<div class="st"><b>②语义补全</b><span>指标口径+表元数据+domain 校验</span></div>
+<span class="arw">→</span>
+<div class="st br"><b>③歧义消除</b><span>多解必须先问用户</span></div>
+<span class="arw">→</span>
+<div class="st"><b>④渲染 prompt</b><span>脚本填模板（确定性）</span></div>
+<span class="arw">→</span>
+<div class="st"><b>⑤生成 SQL</b><span>LLM 只输出一条 SELECT</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>⑥执行迭代</b><span>成功/空/错误三路</span></div>
+</div></div>
+<div class="say">上下文检索用的是 CM 的 20 个 MCP 工具：<code>search_context</code> / <code>search_metrics</code> / <code>get_metric</code> / <code>list_datasets</code> / <code>get_dataset_columns</code> / <code>explore_entity</code> …</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>packages/qwenpaw-data-skills/skills/workflows/fetch-data/SKILL.md</code></p></div>
+</div>`,
+
+"g2": `<div class="panel">
+<h2>⑦ 工具调用<span class="tag t-keep">确定性</span></h2>
+<p class="lead">Agent 拿着生成的 SQL 调 MCP 工具 execute_sql——工具层只做转发、缓存与防阻塞，不做路由决策。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">MCP 工具: execute_sql(sql, max_rows=2000, slow_ms_threshold=8000, metadata)
+  → HTTP POST /api/v1/cm/execute_sql        <em>← ASGI 进程内直传或真实 HTTP</em>
+     {"sql": "SELECT …", "max_rows": 2000,
+      "datasource_id": "mysql-olist-demo",   <em>← metadata 提取，LLM 无需填</em>
+      "session_ref": "…", "slow_ms_threshold": 8000}
+  → cm_execute_sql:
+      · datasource_id 解析: 请求 &gt; session &gt; 按 SQL 引用表图谱反推
+      · max_rows 再被请求预算封顶 cap_sql_rows()
+      · SQL 结果缓存命中 → 直接回（同 SQL+同预算）
+      · 未命中 → execute_sql_async → governor.run(BlockingPool.SQL)
+  → 线程池 ThreadPoolExecutor(SQL_EXEC_WORKERS=4, "cm-sql-exec")</pre></div>
+<div class="say"><b>返回契约对 agent 友好：</b>rows 只带前 20 行预览，完整数据走 <code>download_url</code> 下 CSV（带 TTL 过期）；<code>exec_status ∈ success / error / empty / slow</code> 直接告诉 agent 下一步。</div>
+<div class="say warn"><b>CM MCP 读超时默认 2400s</b>（ODPS 慢任务合法地久），可用 <code>QWENPAW_DATA_CM_MCP_TIMEOUT</code> 调——但也意味着服务端静默失败会占住 agent 40 分钟。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>mcp/cm_server.py:377</code> · <code>api/cm_api.py:1838</code>（cm_execute_sql，含缓存与预览）· <code>api/executor.py:829</code></p></div>
+</div>`,
+
+"x1": `<div class="panel chg">
+<h2>⑧ 只读守卫<span class="tag t-chg">治理闸门</span></h2>
+<p class="lead">LLM 产出的 SQL 进执行器前的唯一闸门——三层防护，任何一层不过直接拒绝，不执行。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">_guard_sql(sql) → None(放行) | 拒绝原因
+
+1) 白名单: 必须 SELECT / WITH / EXPLAIN / SHOW / VALUES 开头
+2) 黑名单: insert|update|delete|drop|truncate|alter|create|grant|revoke|
+           vacuum|copy|comment on|merge into|do|load|refresh|lock table|…
+           <em>← 即使藏在子查询里也拦</em>
+3) 多语句: 字面量替换后仍含 ";" → 拒绝
+
+防误判: _strip_string_literals 先把 '…' 字面量换成 ''
+  → WHERE name = 'SELECT' 不会被黑名单误伤
+
+实例:
+  ✗ "DELETE FROM dwd_order_detail"     → 仅允许只读 SQL
+  ✗ "SELECT 1; DROP TABLE t"           → 禁止多语句执行
+  ✓ "SELECT SUM(item_total) FROM dwd_order_detail
+      WHERE purchase_ts &gt;= '2018-08-01'"</pre></div>
+<div class="say">检查对象是「字面量替换后」的 SQL——字符串里的关键字不算数。这是简单关键字方案，够用的前提：SQL 全部来自 LLM，且 duckdb / sqlite 从驱动层只读打开做第二道兜底。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:148</code>（_guard_sql · _FORBID_RE · _ALLOW_RE）</p></div>
+</div>`,
+
+"x2": `<div class="panel fix">
+<h2>⑨ 类型路由<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">按 datasource_id 读 config 里的 _datasource_type，映射到执行后端名——纯查表，不连库。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">datasource_id 解析: 显式参数 &gt; 会话注入(metadata) &gt; active 默认
+
+_resolve_backend_for_datasource("mysql-olist-demo")
+  → load_datasource_config → cfg["_datasource_type"] = "mysql"
+  → "pymysql_direct"
+
+映射表:
+  postgresql / postgres / hologres → direct(psycopg)
+  mysql / starrocks / doris / tidb → pymysql_direct
+  odps     → odps_akless       duckdb → duckdb_direct       sqlite → sqlite_direct
+  查不到 config / 类型不支持 → "unknown" → 执行时直接报错拒绝</pre></div>
+<div class="say red"><b>查不到 config 一律 unknown 失败</b>——「不退化到 CFG / 环境变量」写在函数注释里的刻意设计。canonical 兜底仅限图谱路由场景（appdata→hologres/pg、analytics_dw→odps，按类型反查真实 datasource_id，同类型多条取 id 最小）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:228</code>（_resolve_backend_for_datasource）· <code>datasource_active_api.py:132</code>（canonical 反查）</p></div>
+</div>`,
+
+"x3": `<div class="panel fix">
+<h2>⑩ 驱动直连<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">每个后端一个轻量函数、各自原生驱动直连——不用 ORM 不用 SQLAlchemy，凭证按 datasource_id 现读现用。</p>
+<div class="sec"><div class="h">五个后端（签名摘要）</div>
+<pre class="data">_execute_sql_via_psycopg      psycopg.connect(**kwargs, autocommit=True,
+                                                 connect_timeout=5)
+_execute_sql_via_pymysql      pymysql.connect(**kwargs, charset="utf8mb4",
+                                                 connect_timeout=5)
+_execute_sql_via_odps_akless  client.execute_sql(sql) → wait_for_success()
+                              → inst.open_reader() 逐条读 max_rows
+_execute_sql_via_duckdb       duckdb.connect(path, read_only=True)
+_execute_sql_via_sqlite       sqlite3.connect("file:{path}?mode=ro",
+                                                 uri=True, timeout=5)</pre></div>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>dispatch 分发</b><span>backend 名 → 对应函数</span></div>
+<span class="arw">→</span>
+<div class="st"><b>连库执行</b><span>凭证现读，连接即用即关</span></div>
+<span class="arw">→</span>
+<div class="st"><b>限流取数</b><span>fetchmany(max_rows+1) 判断截断</span></div>
+<span class="arw">→</span>
+<div class="st out"><b>错误不抛</b><span>封进 ExecResult.error 返回</span></div>
+</div></div>
+<div class="say warn"><b>视图兜底（view fallthrough）：</b>报 view-not-found 且 SQL 引用 <code>cm_view.X</code> / <code>view_xxx</code> 时，查 Neo4j <code>(:Dataset)-[:CONTAINS_TABLE]-&gt;(:Table)</code> 把视图重写为物理表重试一次——只重试一次、多 parent 放弃，对「视图尚未物化」容错。</div>
+<div class="say">duckdb / sqlite 从驱动层只读打开；PG <code>autocommit</code> 防事务悬挂；ODPS 是异步任务语义（带回 logview_url / instance_id / task_status）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:266-484</code>（五个 _execute_sql_via_*）· <code>view_fallthrough.py</code></p></div>
+</div>`,
+
+"x4": `<div class="panel">
+<h2>⑪ 结果返回<span class="tag t-keep">确定性</span></h2>
+<p class="lead">统一 ExecResult 出口——不管哪个后端，agent 拿到的结构一致，错误也走同一通道。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">ExecResult {
+  sql, columns: ["gmv", "order_cnt"],
+  rows: [[1047103.86, 3206]],            <em>← 示例数值（Olist 2018-08，量级供参考）</em>
+  row_count, truncated: false,
+  elapsed_ms: 231.4, error: null,
+  logview_url / instance_id / task_status   <em>← 仅 ODPS 带回</em> }
+→ 非空结果附 download_url（完整 CSV，TTL 过期）
+→ exec_status 分类: success / error / empty / slow(≥slow_ms_threshold)
+→ 信号分类 classify_pg_exec_signal: sql_error / empty_result / slow_query</pre></div>
+<div class="say"><b>sentinel 风险检测（第二道启发式防线）：</b>对 SQL 未过滤的低基数维度列跑 <code>SELECT DISTINCT col, count(*)</code>，值命中「全部 / 总计 / 合计 / all / total / overall …」词典 → 生成 SentinelRisk（附建议过滤器，如 <code>order_status != 'canceled'</code>）交给 critic 复核——防「rollup 行混进明细求和」。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:60</code>（ExecResult）· <code>:184</code>（classify_pg_exec_signal）· <code>:763</code>（detect_sentinel_risks）</p></div>
+</div>`,
+
+/* ═════════════════════════ Tab 2 · SQL 生成侧 ═════════════════════════ */
+
+"s1": `<div class="panel add">
+<h2>Step 1 · 问题结构化<span class="tag t-new">LLM 判断</span></h2>
+<p class="lead">从自然语言里抽五字段结构化 JSON，落盘 {workdir}/steps/——后续每一步都以它为输入。</p>
+<div class="sec"><div class="h">实例（Olist MySQL 数据源）</div>
+<pre class="data">用户问题: "2018年8月，Olist 电商的 GMV 和订单量是多少？"
+
+{ "question":  "2018年8月，Olist 电商的 GMV 和订单量是多少？",
+  "domain":    "OlistEcommerce",          <em>← 业务域（semantic_config.xlsx 导入时定义）</em>
+  "metrics":   ["GMV", "订单量"],          <em>← 必须用标准指标名，不自由改写</em>
+  "intention": "查询 2018 年 8 月 GMV 与订单量两个指标的值",
+  "scope":     ["2018年8月"] }             <em>← 时间/地域各占一元素；缺失填 null 不省略键</em></pre></div>
+<div class="say">metrics 写法约束：尽量用问题里已存在的<b>标准指标名</b>（语义层的 metric_name），避免同义改写造成后续步骤理解歧义。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>skills/workflows/fetch-data/SKILL.md</code> Step 1（Schema 约定）</p></div>
+</div>`,
+
+"s2": `<div class="panel add">
+<h2>Step 2 · 语义补全<span class="tag t-new">LLM 判断</span></h2>
+<p class="lead">按知识源优先级补全两类语义——指标口径（2.1）与表/列元数据（2.2），再校验 domain 唯一（2.3）。</p>
+<div class="sec"><div class="h">实例 2.1 · 指标信息（GMV 节选，落盘 data/raw/）</div>
+<pre class="data">{ "metrics": [{
+    "metric_name": "GMV",  "synonyms": ["成交金额"],
+    "metric_type": "quantity",  "is_north_star": true,  "is_display": true,
+    "formulas": [
+      {"dataset": "dwd_order_detail",
+       "formula": "SUM(CASE WHEN order_status = 'delivered' THEN item_total END)"},
+      {"dataset": "dws_sales_daily",
+       "formula": "select(gmv)"} ] },        <em>← 每指标两张表各一条公式</em>
+  { "metric_name": "订单量", …同结构… } ] }</pre></div>
+<div class="sec"><div class="h">实例 2.2 · 表元数据（节选，真实列）</div>
+<pre class="data">[{ "table_name": "dwd_order_detail",
+   "description": "订单明细宽表（订单+商品+客户+卖家+品类翻译）",
+   "columns": [
+     {"column_name": "order_id",     "dtype": "varchar(64)"},
+     {"column_name": "order_status", "dtype": "varchar(64)"},
+     {"column_name": "purchase_ts",  "dtype": "datetime"},
+     {"column_name": "item_total",   "dtype": "decimal(18,6)"}, … ] },
+ { "table_name": "dws_sales_daily",
+   "columns": [dt · gmv · order_cnt · item_cnt · avg_delivery_days] } ]</pre></div>
+<div class="sec"><div class="h">内部子流程</div><div class="steps">
+<div class="st in"><b>2.1 查指标</b><span>search_metrics / get_metric</span></div>
+<span class="arw">→</span>
+<div class="st"><b>2.2 查表列</b><span>list_datasets / get_dataset_columns / search_context</span></div>
+<span class="arw">→</span>
+<div class="st br"><b>2.3 domain 校验</b><span>非空唯一，否则停下问用户</span></div>
+</div></div>
+<div class="say">拿不到的字段留空——三个知识源都没有就空着，<b>不得用模型先验填充</b>；表元数据被截断时要拉完整版，不遗漏字段。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>SKILL.md</code> Step 2 · <code>mcp/cm_server.py</code>（20 个 MCP 工具）</p></div>
+</div>`,
+
+"c1": `<div class="panel">
+<h2>知识源优先级<span class="tag t-keep">取数纪律</span></h2>
+<p class="lead">Step 2.1 / 2.2 共同的取数纪律——三级优先级 + 两条硬约束，是防「幻觉口径」的闸门。</p>
+<div class="sec"><div class="h">三级优先级</div>
+<pre class="data">1. 语义层      指标/维度/表语义，业务方校准过 → 首选，结果直接用
+2. 湖仓元数据  表/列级物理事实（表名/列名/dtype/注释）→ 语义层缺失时回退
+3. 上下文      对话历史/用户口径说明 → 仅前两者都拿不到时允许，且必须:
+               · 精确对应: 指标/表/列名与目标完全一致，不许"看起来差不多"
+               · 来源标注: 每个来自上下文的字段显式标 source: "context"</pre></div>
+<div class="say red"><b>三源皆空 → 留空处理，禁止模型先验或想象填充。</b>这条纪律与 ⑧ 只读守卫一个防「编口径」、一个防「写破坏」，是 LLM 参与链路的两个硬边界。</div>
+<div class="say">Olist 实例走的是第 1 级：semantic_config.xlsx 导入的指标公式（GMV 两张表各一条）就是语义层产物。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>SKILL.md</code> Step 2「知识源优先级」块</p></div>
+</div>`,
+
+"s3": `<div class="panel chg">
+<h2>Step 3 · 歧义消除<span class="tag t-chg">用户确认闸门</span></h2>
+<p class="lead">补全语义后先停下来核一遍——多解必须先消除（问用户或按默认规则），再进 prompt 生成；结论必须写进回复正文，即便「无歧义」。</p>
+<div class="sec"><div class="h">四类歧义（逐项检查）</div>
+<pre class="data">1. 指标指向不明  "留存率"同时命中 访问留存率/使用留存率 → 列候选问用户
+2. 聚合粒度不明  "对话用户数" = 日均 or 时段总和 → 按默认规则或问用户
+3. 数据表来源不明 多表都能算同一指标 → 列候选 + 选定理由
+4. 维度指向不明  "文本对话"在 dialog_mode 和 dialog_type 都有 → 问用户
+其他: 时间口径（"近30天"含不含今天）· 统计口径（用户数取哪列）也在此提出</pre></div>
+<div class="sec"><div class="h">实例 · GMV 的数据表来源歧义</div>
+<pre class="data">候选 A  dwd_order_detail  明细现算（仅"已送达"口径，CASE WHEN 显式过滤）
+候选 B  dws_sales_daily   select(gmv) 直接取数（DWS 口径略宽）
+选定    A —— 贴合"GMV=已送达成交"语义；结论与理由写进回复正文</pre></div>
+<div class="say"><b>联动规则：</b>消歧写回的标准 metric_name 不在 Step 2.1 现有产物里（改名/换表）→ 回 Step 2 重拉指标与表元数据，再进 Step 4；已齐备则无需重跑。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>SKILL.md</code> Step 3 · <code>references/intent_ambiguity.md</code> · <code>references/data_source_ambiguity.md</code></p></div>
+</div>`,
+
+"s4": `<div class="panel">
+<h2>Step 4 · NL2SQL Prompt 生成<span class="tag t-keep">确定性脚本</span></h2>
+<p class="lead">六步里唯一的确定性步骤——generate_nl2sql_prompt.py 把三份 JSON 渲染进固定模板，脚本本身不调 LLM、不连网。</p>
+<div class="sec"><div class="h">命令与渲染</div>
+<pre class="data">python scripts/generate_nl2sql_prompt.py \
+  --problem steps/problem.json \        <em>← Step 1 产物（Step 3 可能改写过）</em>
+  --metrics data/raw/metrics.json \     <em>← Step 2.1 产物</em>
+  --schema  data/raw/schema.json \      <em>← Step 2.2 产物</em>
+  --output  steps/nl2sql_prompt.md
+
+模板 prompts/nl2sql.md 三处占位:
+  {{schema}}   → "### Table: dwd_order_detail" + 逐列 markdown
+  {{metrics}}  → "- **GMV** (quantity, north_star)" + dataset/formula 缩进块
+  {{question}} → Step 1 结构化问题</pre></div>
+<div class="sec"><div class="h">模板关键规则（写死在 nl2sql.md）</div>
+<pre class="data">· 只输出一条 SQL；只用 schema 里出现过的表/列标识符，禁止发明
+· 证据(evidence=指标块)优先级高于 schema 猜测: 公式/过滤/日期锚点强制遵守
+· 输出两个 section: ### Explanation + ### SQL（以 ; 结尾）
+· 多指标/多表 → 每个指标必须出现在结果集（并行 SELECT / FULL OUTER JOIN / UNION ALL）</pre></div>
+<div class="say warn"><b>方言差异的兜底：</b>模板里「分区列 ds 是 YYYYMMDD 字符串」是 ODPS 方言习惯——Olist MySQL 实例没有 ds 分区列，模型按 schema 里的 <code>purchase_ts (datetime)</code> 写 WHERE；「只用 schema 里出现的标识符」这条规则兜住了差异。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>scripts/generate_nl2sql_prompt.py</code> · <code>prompts/nl2sql.md</code></p></div>
+</div>`,
+
+"s5": `<div class="panel add">
+<h2>Step 5 · SQL 生成<span class="tag t-new">LLM 生成</span></h2>
+<p class="lead">整段 prompt 原样交给当前模型——不许节选、不许总结、不许加额外指令；模型必须只输出一条可执行 SELECT。</p>
+<div class="sec"><div class="h">Olist 实例产物（真实表列，可直接执行）</div>
+<pre class="data">SELECT
+  (SELECT SUM(CASE WHEN order_status = 'delivered' THEN item_total END)
+     FROM dwd_order_detail
+    WHERE purchase_ts &gt;= '2018-08-01'
+      AND purchase_ts &lt;  '2018-09-01')            AS gmv,
+  (SELECT COUNT(DISTINCT CASE WHEN order_status = 'delivered'
+                               THEN order_id END)
+     FROM dwd_order_detail
+    WHERE purchase_ts &gt;= '2018-08-01'
+      AND purchase_ts &lt;  '2018-09-01')            AS order_cnt;</pre></div>
+<div class="sec"><div class="h">决策捷径（模板内置，降低犹豫）</div>
+<pre class="data">· 多指标 → 必须全覆盖（本例选了"并行标量子查询"模式）
+· 时间锚点 today=YYYYMMDD / year_inferred=YYYY 直接采信，不纠结年份
+· 列描述与问题措辞更贴合时，直接用 schema 列，跳过自我怀疑循环</pre></div>
+<div class="say">只截 SQL 主体（去代码围栏 / Markdown 注释 / 解释段）保存；多条语句 → 回 Step 4 查 prompt，<b>不手工拼接、不二次改写</b>。</div>
+<div class="say warn">MySQL 没有 FULL OUTER JOIN——模板给的三种多指标模式里，模型在 MySQL 方言下会选并行标量子查询或 UNION ALL（本例即前者）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>SKILL.md</code> Step 5（六条硬规则）</p></div>
+</div>`,
+
+"s6": `<div class="panel add">
+<h2>Step 6 · 执行与迭代<span class="tag t-new">LLM 判断</span></h2>
+<p class="lead">经数据湖仓标准通道执行，三条出口路径——只有第一条算成功，后两条都要带着原因回上游。</p>
+<div class="sec"><div class="h">三条路径</div>
+<div class="steps">
+<div class="st out"><b>1 · 非空结果</b><span>保存 CSV（截断则走 download_url）→ 交下游分析</span></div>
+<span class="arw">·</span>
+<div class="st br"><b>2 · 空结果集</b><span>不许假装成功：查 scope 时间(回1) / 漏歧义(回3) / 过滤条件(回5)</span></div>
+<span class="arw">·</span>
+<div class="st bad"><b>3 · 执行错误</b><span>error 透传：语法/列不存在(回5) / 表列名查不到(回2 重拉元数据)</span></div>
+</div></div>
+<div class="say red"><b>明令禁止绕过标准执行通道</b>（shell / psql 自行取数）——那样拿到的结果不可复现、无法被评测器审计。执行通道就是「查数路由侧」页签：守卫 → 类型路由 → 驱动直连。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>SKILL.md</code> Step 6（三条路径的排查顺序）</p></div>
+</div>`,
+
+"ex": `<div class="panel ex">
+<h2>实例走查 · Olist MySQL<span class="tag t-ex">真实数据</span></h2>
+<p class="lead">从用户问题到执行结果的完整一串——每段数据都能在上面的步骤面板里找到出处；数据源 mysql-olist-demo 真实存在。</p>
+<div class="sec"><div class="h">全程数据流</div>
+<pre class="data">用户问题   "2018年8月，Olist 电商的 GMV 和订单量是多少？"
+   ↓ Step 1
+结构化      {domain: "OlistEcommerce", metrics: ["GMV", "订单量"],
+             scope: ["2018年8月"]}
+   ↓ Step 2  (语义层: semantic_config.xlsx 导入的指标公式)
+指标口径    GMV   = SUM(CASE WHEN order_status='delivered'
+                             THEN item_total END)  @dwd_order_detail
+            订单量 = COUNT(DISTINCT CASE WHEN … THEN order_id END) @dwd_order_detail
+表元数据    dwd_order_detail 24 列（order_status · purchase_ts · item_total · order_id …）
+   ↓ Step 3  歧义检查: dwd vs dws 两表都能算 → 选 dwd（"已送达"口径贴合）
+   ↓ Step 4  prompt = nl2sql.md 模板 + {{schema}}/{{metrics}}/{{question}}
+   ↓ Step 5  SELECT（并行标量子查询 × 2）← 见 Step 5 面板
+   ↓ Step 6  execute_sql 工具 → mysql-olist-demo → pymysql_direct
+执行结果    ExecResult{columns: ["gmv", "order_cnt"],
+                        rows: [[≈1.05e6, 3206]]}   <em>← 数值示意</em></pre></div>
+<div class="say">该库由 <code>examples/mysql/init.sql</code> 建库脚本创建（明细表 90 天窗口 20,575 行、DWS 全历史）；rows 数值为示意——2018-08-15 单日 dws gmv≈52,358.65，可据此交叉验证月度量级。</div>
+<div class="say warn"><b>数据质量坑：</b>原始 olist 库 DWD/DWS 层有 4 倍 ETL 重复，olist_example 是去重后的干净副本（明细 DISTINCT、DWS 按 key 取 MIN）——直接对原库 SUM/COUNT 会得 4 倍值。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>examples/mysql/README.md</code> · <code>examples/mysql/init.sql</code> · <code>examples/mysql/datasource.example.json</code></p></div>
+</div>`,
+
+/* ═════════════════════════ Tab 3 · 查数路由侧 ═════════════════════════ */
+
+"re1": `<div class="panel chg">
+<h2>⑧ 只读守卫（路由前置）<span class="tag t-chg">治理闸门</span></h2>
+<p class="lead">进路由之前先过闸——SQL 是 LLM 出的，这是执行前的唯一拦截点，与数据源类型无关。</p>
+<div class="sec"><div class="h">三层防护</div>
+<pre class="data">1) 白名单  仅 SELECT / WITH / EXPLAIN / SHOW / VALUES 开头
+2) 黑名单  insert|update|delete|drop|… 藏在子查询里也拦
+3) 多语句  字面量替换后含 ";" → 拒绝
+
+实例: "SELECT …; DROP TABLE t" → 禁止多语句执行
+      "DELETE FROM dwd_order_detail" → 仅允许只读 SQL</pre></div>
+<div class="say">完整规则与防误判机制见「全链路」页签 ⑧ 面板；守卫通过后才进入数据源解析。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:148</code>（_guard_sql）</p></div>
+</div>`,
+
+"re2": `<div class="panel">
+<h2>数据源解析<span class="tag t-keep">确定性</span></h2>
+<p class="lead">确定「这条 SQL 用哪个数据源执行」——四级优先级，全是查内存与查表，不连库。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">优先级链:
+  ① 工具显式参数 datasource_id          <em>← LLM 一般不填</em>
+  ② metadata.datasource_id / ds_id       <em>← host 中间件注入（主路径）</em>
+  ③ active 默认（PUT /api/datasources/active）
+  ④ cm_execute_sql 兜底: 按 SQL 引用的表从图谱反推
+     （warehouse 表 → ODPS；appdata → hologres/pg）
+
+metadata 源头（host 中间件改写后的工具入参）:
+  {"sql": "SELECT …",
+   "metadata": {"datasource_id": "mysql-olist-demo"}}
+  <em>← 仅对 CM MCP 客户端生效（URL 含 /mcp/v1/cm 的 http_mcp）</em></pre></div>
+<div class="say">都没拿到 → execute_sql 返回「未指定当前数据源：请先通过 PUT /api/datasources/active 切换数据源」——不猜、不回退环境变量。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:545</code> · <code>host/core/mcp_cm.py:110</code> · <code>mcp/cm_server.py:229</code>（_meta_datasource_id）</p></div>
+</div>`,
+
+"re3": `<div class="panel">
+<h2>读 config 判型<span class="tag t-keep">确定性</span></h2>
+<p class="lead">从 semantic_config.db 只读连接里取该数据源的 config，类型字段决定走哪个执行后端。</p>
+<div class="sec"><div class="h">输入 → 输出（实际数据）</div>
+<pre class="data">load_datasource_config("mysql-olist-demo")
+  sqlite3.connect("file:semantic_config.db?mode=ro", uri=True)   <em>← 只读连接</em>
+  SELECT datasource_type, config FROM datasource
+   WHERE (datasource_id = ? OR CAST(id AS TEXT) = ?) AND is_deleted = 0
+  → cfg = {"host": "127.0.0.1", "port": 3306,
+           "database": "olist_example", "user": "root", "password": "***",
+           "_datasource_type": "mysql"}       <em>← 判型依据</em></pre></div>
+<div class="say">datasource_id 既可能是字符串 code（如 mysql-olist-demo），也可能是 host 注入的数字主键 id——两者任一命中即返回该行。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/datasource_active_api.py:90</code>（load_datasource_config）</p></div>
+</div>`,
+
+"re4": `<div class="panel fix">
+<h2>类型 → 后端映射<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">if/elif 查表把 _datasource_type 映射为后端名，_dispatch 按后端名调函数——路由纯查表，真正连库发生在各后端函数里。</p>
+<div class="sec"><div class="h">映射表（executor.py:228）</div>
+<pre class="data">postgresql / postgres / hologres → direct          → _execute_sql_via_psycopg
+mysql / starrocks / doris / tidb   → pymysql_direct  → _execute_sql_via_pymysql
+odps                               → odps_akless     → _execute_sql_via_odps_akless
+duckdb                             → duckdb_direct   → _execute_sql_via_duckdb
+sqlite                             → sqlite_direct   → _execute_sql_via_sqlite
+unknown（config 缺失/类型不支持）    → 直接返回 error，不执行</pre></div>
+<div class="say"><b>凭证现读现用不缓存：</b>每次执行都重新 load config → resolve 连接参数 → 连库即用即关；SQL 结果缓存（cm_execute_sql 层）只缓存结果文本，不缓存连接。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:228</code>（_resolve_backend_for_datasource）· <code>:557</code>（_dispatch）</p></div>
+</div>`,
+
+"rb1": `<div class="panel fix">
+<h2>direct · psycopg<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">PG 系执行后端——PostgreSQL / Hologres（PG 协议兼容的阿里实时分析库）走同一条 psycopg 直连。</p>
+<div class="sec"><div class="h">连接与执行</div>
+<pre class="data">resolve_pg_connect_kwargs(datasource_id, search_path=False)
+  <em>← ds_type 必须 ∈ (postgresql, postgres, hologres)，否则 RuntimeError</em>
+psycopg.connect(**kwargs, autocommit=True, connect_timeout=5)
+  → cur.execute(sql) → fetchmany(max_rows + 1)</pre></div>
+<div class="say"><b>autocommit=True 防事务悬挂</b>；fetchmany 多取一行用于 truncated 判断，多出的一行丢弃。sentinel 检测的 distinct 查询也走同一连接参数（附 SET statement_timeout=5000）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:266</code>（_execute_sql_via_psycopg）· <code>datasource_active_api.py:189</code></p></div>
+</div>`,
+
+"rb2": `<div class="panel fix">
+<h2>pymysql_direct · MySQL 族<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">MySQL 线协议族的执行后端——PyMySQL 直连，charset 固定 utf8mb4。</p>
+<div class="sec"><div class="h">连接与执行</div>
+<pre class="data">resolve_mysql_connect_kwargs(datasource_id)
+  <em>← ds_type 必须 == "mysql"（datasource_active_api.py:248），否则 RuntimeError</em>
+  → {"host", "port", "user", "password", "database"}
+pymysql.connect(**kwargs, charset="utf8mb4", connect_timeout=5)
+  → cur.execute(sql) → fetchmany(max_rows + 1)</pre></div>
+<div class="say red"><b>诚实校准——MySQL 兼容引擎的查数缺口：</b>路由表把 starrocks / doris / tidb 也指到此后端，但连接参数解析只认 <code>_datasource_type == "mysql"</code>——注册为这三类的数据源当前查数会报「类型 "starrocks" 不是 mysql」。<b>注册 / 校验 / 连测通道正常</b>（那几层按类型各自分发），查数这条路尚未打通：<code>MYSQL_COMPATIBLE_TYPES</code> 常量已定义但 executor 未使用。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:307</code> · <code>datasource_active_api.py:228</code>（resolve_mysql_connect_kwargs）</p></div>
+</div>`,
+
+"rb3": `<div class="panel fix">
+<h2>odps_akless · PyODPS<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">ODPS / MaxCompute 执行后端——不是「连接」语义而是「异步任务」语义：提交 → 等完成 → 开 reader 读。</p>
+<div class="sec"><div class="h">连接与执行</div>
+<pre class="data">get_odps_client(datasource_id) → resolve_odps_connect_config
+  sts_token 存在 → StsAccount(AK/SK/STS)     <em>← STS 优先</em>
+  否则          → AK/SK 直连
+client.execute_sql(sql)      <em>← 提交异步任务，拿 instance</em>
+inst.wait_for_success()      <em>← 阻塞等待（在线程池里跑）</em>
+inst.open_reader()           <em>← 逐条读 max_rows 行</em>
+
+带回: logview_url(排查入口) · instance_id · task_status</pre></div>
+<div class="say"><b>慢任务天然存在</b>——这就是 CM MCP 读超时放到 2400s 的原因；logview_url 让人能去 MaxCompute 控制台看任务详情。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:440</code> · <code>graph/odps_akless.py:19</code>（get_odps_client）</p></div>
+</div>`,
+
+"rb4": `<div class="panel fix">
+<h2>duckdb_direct · 单文件<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">本地 DuckDB 文件执行后端——无 host 无凭证，配置只有 path 一个 key。</p>
+<div class="sec"><div class="h">连接与执行</div>
+<pre class="data">_file_db_path(datasource_id, "duckdb")    <em>← 类型必须是 duckdb 且文件存在</em>
+duckdb.connect(str(path), read_only=True)  <em>← 驱动层只读</em>
+  → conn.execute(sql) → fetchmany(max_rows + 1)</pre></div>
+<div class="say">文件不存在 / 类型不符 → RuntimeError 封进 ExecResult.error；只读打开与 ⑧ 守卫构成双保险。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:374</code> · <code>:354</code>（_file_db_path）</p></div>
+</div>`,
+
+"rb5": `<div class="panel fix">
+<h2>sqlite_direct · 单文件<span class="tag t-fix">类型适配</span></h2>
+<p class="lead">本地 SQLite 文件执行后端——标准库 sqlite3，URI 只读模式打开。</p>
+<div class="sec"><div class="h">连接与执行</div>
+<pre class="data">_file_db_path(datasource_id, "sqlite")
+sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)   <em>← URI 只读</em>
+  → conn.execute(sql) → fetchmany(max_rows + 1)</pre></div>
+<div class="say">连测走同一个 <code>mode=ro</code> 打开方式（数 sqlite_master 表）；建图侧反射用可写连接读 PRAGMA——两条通道互不影响。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:407</code> · <code>connection_tester.py:141</code></p></div>
+</div>`,
+
+"rm1": `<div class="panel">
+<h2>适配机制总览<span class="tag t-keep">确定性</span></h2>
+<p class="lead">「不同类型怎么适配」的答案：四层各自维护一张「类型字符串 → 处理者」映射，新增类型的接入面就是四处各加一条。</p>
+<div class="sec"><div class="h">四层字典分发</div>
+<table class="mini"><tr>
+<th>层</th><th>映射</th><th>位置</th>
+</tr>
+<tr><td>注册校验</td><td><code>CONFIG_MODEL_BY_TYPE</code>：类型 → pydantic 模型</td><td><code>datasource_config.py:100</code></td></tr>
+<tr><td>连接测试</td><td><code>_TESTER_BY_TYPE</code>：类型 → 试连函数</td><td><code>connection_tester.py:158</code></td></tr>
+<tr><td>元数据建图</td><td><code>_FACTORIES</code> registry：connection.type → 工厂</td><td><code>adapters/registry.py:14</code></td></tr>
+<tr><td>查数执行</td><td>if/elif 链 + <code>_dispatch</code>：类型 → 后端 → 驱动函数</td><td><code>executor.py:228 / 557</code></td></tr>
+</table></div>
+<div class="sec"><div class="h">三个复用手法</div>
+<pre class="data">别名归并   StarRocks/Doris/TiDB ≡ MySQL：四层全部复用 MySQL 的模型/驱动/Adapter
+模板方法   建图侧 UniversalConnector：引擎/池/反射在基类，
+           方言差异在 _engine_url()/_load_column_comments() 等覆写点
+查表即路由 运行侧每后端一个轻量函数，公共约定三条：
+           凭证现读 · fetchmany(max_rows+1) · 错误封 ExecResult 不抛</pre></div>
+<div class="say red"><b>诚实校准——两条通道能力不对齐：</b>① 词表差异：注册侧枚举 <code>postgresql</code> vs 建图侧 key <code>postgres</code>/<code>hologres</code>；② 支持面差异：bigquery / ddl / csv 只在建图侧——BigQuery 能建图、不能查数；③ starrocks/doris/tidb 路由到了 pymysql_direct 但连接参数解析只认 mysql（见 PyMySQL 后端面板）。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0">四个文件即四层——见上表</p></div>
+</div>`,
+
+"rex": `<div class="panel ex">
+<h2>实例走查 · mysql-olist-demo<span class="tag t-ex">真实数据</span></h2>
+<p class="lead">一条 SQL 从工具调用到 PyMySQL 结果的完整路由过程——每步函数名与参数和代码一一对应。</p>
+<div class="sec"><div class="h">全程数据流</div>
+<pre class="data">① 工具调用（host 注入 metadata 后）
+   mcp__context-manager__execute_sql
+   {"sql": "SELECT (SELECT SUM(…)…) AS gmv, (SELECT COUNT(…)…) AS order_cnt",
+    "max_rows": 2000,
+    "metadata": {"datasource_id": "mysql-olist-demo"}}
+
+② HTTP    POST /api/v1/cm/execute_sql
+           {"sql": …, "datasource_id": "mysql-olist-demo", "max_rows": …}
+
+③ 守卫    _guard_sql → SELECT 开头 ✓ 无黑名单词 ✓ 无分号 ✓ → 放行
+
+④ 判型    load_datasource_config("mysql-olist-demo")
+           → _datasource_type = "mysql" → backend = "pymysql_direct"
+
+⑤ 连库    resolve_mysql_connect_kwargs →
+           pymysql.connect(host="127.0.0.1", port=3306, user="root",
+                           password="***", database="olist_example",
+                           charset="utf8mb4", connect_timeout=5)
+
+⑥ 执行    cur.execute(sql) → fetchmany(2001) → 截断判断
+
+⑦ 返回    ExecResult{columns: ["gmv", "order_cnt"],
+                      rows: [[≈1.05e6, 3206]],        <em>← 数值示意</em>
+                      truncated: false, elapsed_ms: ≈230}
+           + download_url（完整 CSV，TTL 过期）</pre></div>
+<div class="say green"><b>换数据源只变两步：</b>换成 PostgreSQL 数据源，只有 ④（backend="direct"）⑤（psycopg）变——①②③⑥⑦ 全部不变。这就是路由层的意义：把「类型差异」压缩到两个替换点。</div>
+<div class="sec"><div class="h">代码位置</div><p style="margin:2px 0"><code>api/executor.py:514</code>（execute_sql 主流程）——本面板即该函数的逐行走读</p></div>
+</div>`
+};
+
+/* ═════════════════════════ SVG · Tab 1 全链路 ═════════════════════════ */
+
+const FULL_SVG = `<g class="nd" id="gr1" onclick="pick('r1')"><rect x="30" y="24" width="160" height="56" rx="8"/><text x="110" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">① 注册校验</text><text x="110" y="63" text-anchor="middle" font-size="11" fill="#66757f">pydantic · extra="forbid"</text></g>
+<g class="nd" id="gr2" onclick="pick('r2')"><rect x="220" y="24" width="160" height="56" rx="8"/><text x="300" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">② 连接测试</text><text x="300" y="63" text-anchor="middle" font-size="11" fill="#66757f">原生驱动 · SELECT 1</text></g>
+<g class="nd" id="gr3" onclick="pick('r3')"><rect x="410" y="24" width="160" height="56" rx="8"/><text x="490" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">③ 凭证落库</text><text x="490" y="63" text-anchor="middle" font-size="11" fill="#66757f">semantic_config.db</text></g>
+<g class="nd" id="gr4" onclick="pick('r4')"><rect x="600" y="24" width="180" height="56" rx="8"/><text x="690" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">④ 语义建图（可选）</text><text x="690" y="63" text-anchor="middle" font-size="11" fill="#66757f">Adapters → Neo4j 图谱</text></g>
+<g class="nd" id="ga1" onclick="pick('a1')"><rect x="810" y="24" width="180" height="56" rx="8"/><text x="900" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑤ 数据源生效</text><text x="900" y="63" text-anchor="middle" font-size="11" fill="#66757f">active 切换 · 会话注入</text></g>
+<path class="ln" d="M 190 52 H 220"/>
+<path class="ln" d="M 380 52 H 410"/>
+<path class="ln" d="M 570 52 H 600"/>
+<path class="ln" d="M 780 52 H 810"/>
+<g class="nd add" id="gg1" onclick="pick('g1')"><rect x="30" y="210" width="180" height="56" rx="8"/><text x="120" y="231" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑥ Agent 取数</text><text x="120" y="249" text-anchor="middle" font-size="11" fill="#66757f">fetch-data 六步 → SQL</text></g>
+<g class="nd" id="gg2" onclick="pick('g2')"><rect x="240" y="210" width="180" height="56" rx="8"/><text x="330" y="231" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑦ 工具调用</text><text x="330" y="249" text-anchor="middle" font-size="11" fill="#66757f">MCP → HTTP → 线程池</text></g>
+<g class="nd chg" id="gx1" onclick="pick('x1')"><rect x="450" y="210" width="150" height="56" rx="8"/><text x="525" y="231" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑧ 只读守卫</text><text x="525" y="249" text-anchor="middle" font-size="11" fill="#66757f">_guard_sql 三层防护</text></g>
+<g class="nd fix" id="gx2" onclick="pick('x2')"><rect x="630" y="210" width="160" height="56" rx="8"/><text x="710" y="231" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑨ 类型路由</text><text x="710" y="249" text-anchor="middle" font-size="11" fill="#66757f">backend 查表解析</text></g>
+<g class="nd fix" id="gx3" onclick="pick('x3')"><rect x="820" y="210" width="170" height="56" rx="8"/><text x="905" y="231" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑩ 驱动直连</text><text x="905" y="249" text-anchor="middle" font-size="11" fill="#66757f">5 个执行后端</text></g>
+<g class="nd" id="gx4" onclick="pick('x4')"><rect x="1020" y="210" width="160" height="56" rx="8"/><text x="1100" y="231" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑪ 结果返回</text><text x="1100" y="249" text-anchor="middle" font-size="11" fill="#66757f">ExecResult + CSV</text></g>
+<path class="ln" d="M 210 238 H 240"/>
+<path class="ln" d="M 420 238 H 450"/>
+<path class="ln" d="M 600 238 H 630"/>
+<path class="ln" d="M 790 238 H 820"/>
+<path class="ln" d="M 990 238 H 1020"/>
+<path class="ln side" d="M 690 80 V 145 H 120 V 210"/>
+<text x="390" y="138" text-anchor="middle" font-size="11" fill="#8b9aa4">表 / 列 / 指标语义（Neo4j 图谱）</text>
+<path class="ln side" d="M 900 80 V 170 H 330 V 210"/>
+<text x="612" y="163" text-anchor="middle" font-size="11" fill="#8b9aa4">datasource_id（会话注入或 active）</text>
+<path class="ln fb" d="M 1100 266 V 330 H 120 V 266"/>
+<text x="600" y="350" text-anchor="middle" font-size="11" fill="#4f9f6f">错误 / 空结果 → 回取数步骤迭代（Step 6 三条路径）</text>
+<g transform="translate(30,430)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#f4f8fb" stroke="#8fa8bd"/><text x="19" y="11" font-size="12" fill="#5a6b76">确定性环节（脚本/查表）</text><rect x="175" y="0" width="13" height="13" rx="3" fill="#eaf7ef" stroke="#5aa877"/><text x="194" y="11" font-size="12" fill="#5a6b76">LLM 生成/判断</text><rect x="290" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="309" y="11" font-size="12" fill="#5a6b76">治理与安全闸门</text><rect x="415" y="0" width="13" height="13" rx="3" fill="#fdf0f1" stroke="#cf6a7a"/><text x="434" y="11" font-size="12" fill="#5a6b76">类型适配与分发</text><rect x="530" y="0" width="13" height="13" rx="3" fill="#f5f0fa" stroke="#8a6fbf"/><text x="549" y="11" font-size="12" fill="#5a6b76">实例走查（点开看真实数据）</text></g>
+<text x="30" y="462" font-size="12" fill="#8b9aa4">注册链产出的两样东西分两处喂进查数链：④ 的图谱语义喂 ⑥ 的 SQL 生成，⑤ 的 datasource_id 喂 ⑦ 之后的执行路由</text>
+<text x="30" y="484" font-size="12" fill="#8b9aa4">⑧–⑩ 只信 semantic_config.db 里的凭证——查不到一律失败，不回退环境变量；守卫拦截先于路由，路由纯查表不连库</text>`;
+
+/* ═════════════════════════ SVG · Tab 2 SQL 生成侧 ═════════════════════════ */
+
+const GEN_SVG = `<g class="nd add" id="gs1" onclick="pick('s1')"><rect x="30" y="24" width="165" height="56" rx="8"/><text x="112" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 1 问题结构化</text><text x="112" y="63" text-anchor="middle" font-size="11" fill="#66757f">用户问题 → 五字段 JSON</text></g>
+<g class="nd add" id="gs2" onclick="pick('s2')"><rect x="225" y="24" width="165" height="56" rx="8"/><text x="307" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 2 语义补全</text><text x="307" y="63" text-anchor="middle" font-size="11" fill="#66757f">指标口径 + 表元数据</text></g>
+<g class="nd chg" id="gs3" onclick="pick('s3')"><rect x="420" y="24" width="165" height="56" rx="8"/><text x="502" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 3 歧义消除</text><text x="502" y="63" text-anchor="middle" font-size="11" fill="#66757f">多解 → 用户确认</text></g>
+<g class="nd" id="gs4" onclick="pick('s4')"><rect x="615" y="24" width="165" height="56" rx="8"/><text x="697" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 4 NL2SQL Prompt</text><text x="697" y="63" text-anchor="middle" font-size="11" fill="#66757f">脚本渲染固定模板</text></g>
+<g class="nd add" id="gs5" onclick="pick('s5')"><rect x="810" y="24" width="165" height="56" rx="8"/><text x="892" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 5 SQL 生成</text><text x="892" y="63" text-anchor="middle" font-size="11" fill="#66757f">只输出一条 SELECT</text></g>
+<g class="nd add" id="gs6" onclick="pick('s6')"><rect x="1005" y="24" width="165" height="56" rx="8"/><text x="1087" y="45" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">Step 6 执行与迭代</text><text x="1087" y="63" text-anchor="middle" font-size="11" fill="#66757f">成功 · 空 · 错误三路</text></g>
+<path class="ln" d="M 195 52 H 225"/>
+<path class="ln" d="M 390 52 H 420"/>
+<path class="ln" d="M 585 52 H 615"/>
+<path class="ln" d="M 780 52 H 810"/>
+<path class="ln" d="M 975 52 H 1005"/>
+<g class="nd" id="gc1" onclick="pick('c1')"><rect x="225" y="170" width="310" height="56" rx="8"/><text x="380" y="191" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">知识源优先级</text><text x="380" y="209" text-anchor="middle" font-size="11" fill="#66757f">语义层 &gt; 湖仓元数据 &gt; 上下文 · 禁先验填充</text></g>
+<path class="ln side" d="M 307 80 V 170"/>
+<g class="nd ex" id="gex" onclick="pick('ex')"><rect x="615" y="170" width="555" height="56" rx="8"/><text x="892" y="191" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#22333d">实例走查 · Olist MySQL</text><text x="892" y="209" text-anchor="middle" font-size="11" fill="#66757f">问题 → 结构化 → 指标/表 → prompt → SQL → 执行结果</text></g>
+<path class="ln side" d="M 892 80 V 170"/>
+<path class="ln side" d="M 1087 80 V 170"/>
+<path class="ln fb" d="M 1087 80 V 130 H 307 V 80"/>
+<text x="650" y="124" text-anchor="middle" font-size="11" fill="#4f9f6f">空结果 / 执行错误 → 回 Step 1·3·5（错误）或 Step 2（表列缺失）</text>
+<g transform="translate(30,300)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#eaf7ef" stroke="#5aa877"/><text x="19" y="11" font-size="12" fill="#5a6b76">LLM 判断/生成</text><rect x="120" y="0" width="13" height="13" rx="3" fill="#f4f8fb" stroke="#8fa8bd"/><text x="139" y="11" font-size="12" fill="#5a6b76">确定性脚本</text><rect x="210" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="229" y="11" font-size="12" fill="#5a6b76">用户确认闸门</text><rect x="310" y="0" width="13" height="13" rx="3" fill="#f5f0fa" stroke="#8a6fbf"/><text x="329" y="11" font-size="12" fill="#5a6b76">实例走查</text></g>
+<text x="30" y="332" font-size="12" fill="#8b9aa4">Step 4 是唯一确定性步骤（脚本渲染不调 LLM）；其余步骤靠落盘产物 + 禁捏造纪律 + 歧义必须问用户来约束 LLM</text>
+<text x="30" y="354" font-size="12" fill="#8b9aa4">实例数据源 mysql-olist-demo 真实存在（examples/mysql/）；执行结果数值为示意，实际以库内查询为准</text>`;
+
+/* ═════════════════════════ SVG · Tab 3 查数路由侧 ═════════════════════════ */
+
+const ROUTE_SVG = `<g class="nd chg" id="gre1" onclick="pick('re1')"><rect x="30" y="24" width="150" height="56" rx="8"/><text x="105" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">⑧ 只读守卫</text><text x="105" y="63" text-anchor="middle" font-size="11" fill="#66757f">白名单·黑名单·拒多语句</text></g>
+<g class="nd" id="gre2" onclick="pick('re2')"><rect x="210" y="24" width="210" height="56" rx="8"/><text x="315" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">数据源解析</text><text x="315" y="63" text-anchor="middle" font-size="11" fill="#66757f">metadata 注入 &gt; active 默认</text></g>
+<g class="nd" id="gre3" onclick="pick('re3')"><rect x="450" y="24" width="180" height="56" rx="8"/><text x="540" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">读 config 判型</text><text x="540" y="63" text-anchor="middle" font-size="11" fill="#66757f">_datasource_type</text></g>
+<g class="nd fix" id="gre4" onclick="pick('re4')"><rect x="660" y="24" width="180" height="56" rx="8"/><text x="750" y="45" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">类型 → 后端</text><text x="750" y="63" text-anchor="middle" font-size="11" fill="#66757f">if/elif 五分支 + _dispatch</text></g>
+<path class="ln" d="M 180 52 H 210"/>
+<path class="ln" d="M 420 52 H 450"/>
+<path class="ln" d="M 630 52 H 660"/>
+<g class="nd fix" id="grb1" onclick="pick('rb1')"><rect x="30" y="170" width="200" height="62" rx="8"/><text x="130" y="192" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">direct</text><text x="130" y="210" text-anchor="middle" font-size="11" fill="#66757f">psycopg · PG / Hologres</text><text x="130" y="224" text-anchor="middle" font-size="10.5" fill="#8b9aa4">autocommit · connect_timeout=5</text></g>
+<g class="nd fix" id="grb2" onclick="pick('rb2')"><rect x="250" y="170" width="225" height="62" rx="8"/><text x="362" y="192" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">pymysql_direct</text><text x="362" y="210" text-anchor="middle" font-size="11" fill="#66757f">PyMySQL · MySQL / StarRocks / Doris / TiDB</text><text x="362" y="224" text-anchor="middle" font-size="10.5" fill="#8b9aa4">utf8mb4（兼容引擎有缺口，点开看）</text></g>
+<g class="nd fix" id="grb3" onclick="pick('rb3')"><rect x="495" y="170" width="200" height="62" rx="8"/><text x="595" y="192" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">odps_akless</text><text x="595" y="210" text-anchor="middle" font-size="11" fill="#66757f">PyODPS · MaxCompute</text><text x="595" y="224" text-anchor="middle" font-size="10.5" fill="#8b9aa4">异步任务 · logview_url</text></g>
+<g class="nd fix" id="grb4" onclick="pick('rb4')"><rect x="715" y="170" width="190" height="62" rx="8"/><text x="810" y="192" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">duckdb_direct</text><text x="810" y="210" text-anchor="middle" font-size="11" fill="#66757f">duckdb · 单文件</text><text x="810" y="224" text-anchor="middle" font-size="10.5" fill="#8b9aa4">read_only=True</text></g>
+<g class="nd fix" id="grb5" onclick="pick('rb5')"><rect x="925" y="170" width="190" height="62" rx="8"/><text x="1020" y="192" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">sqlite_direct</text><text x="1020" y="210" text-anchor="middle" font-size="11" fill="#66757f">sqlite3 · 单文件</text><text x="1020" y="224" text-anchor="middle" font-size="10.5" fill="#8b9aa4">mode=ro URI</text></g>
+<path class="ln" d="M 750 80 V 120 H 130 V 170"/>
+<path class="ln" d="M 750 80 V 120 H 362 V 170"/>
+<path class="ln" d="M 750 80 V 120 H 595 V 170"/>
+<path class="ln" d="M 750 80 V 120 H 810 V 170"/>
+<path class="ln" d="M 750 80 V 120 H 1020 V 170"/>
+<g class="nd" id="grm1" onclick="pick('rm1')"><rect x="30" y="300" width="545" height="62" rx="8"/><text x="302" y="322" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">适配机制总览</text><text x="302" y="340" text-anchor="middle" font-size="11" fill="#66757f">四层字典分发 · 别名归并 · 模板方法 · 新类型接入面</text><text x="302" y="354" text-anchor="middle" font-size="10.5" fill="#8b9aa4">含诚实校准：词表差异 / BigQuery 只建图 / 兼容引擎缺口</text></g>
+<g class="nd ex" id="grex" onclick="pick('rex')"><rect x="605" y="300" width="565" height="62" rx="8"/><text x="887" y="322" text-anchor="middle" font-size="13" font-weight="bold" fill="#22333d">实例走查 · mysql-olist-demo</text><text x="887" y="340" text-anchor="middle" font-size="11" fill="#66757f">工具调用 → 守卫 → 判型 → PyMySQL → ExecResult</text><text x="887" y="354" text-anchor="middle" font-size="10.5" fill="#8b9aa4">换 PG 数据源只有判型与连库两步变</text></g>
+<path class="ln side" d="M 362 232 V 266 H 302 V 300"/>
+<g transform="translate(30,420)"><rect x="0" y="0" width="13" height="13" rx="3" fill="#f4f8fb" stroke="#8fa8bd"/><text x="19" y="11" font-size="12" fill="#5a6b76">确定性环节</text><rect x="115" y="0" width="13" height="13" rx="3" fill="#fdf4e5" stroke="#c99a30"/><text x="134" y="11" font-size="12" fill="#5a6b76">治理与安全闸门</text><rect x="240" y="0" width="13" height="13" rx="3" fill="#fdf0f1" stroke="#cf6a7a"/><text x="259" y="11" font-size="12" fill="#5a6b76">类型适配与分发</text><rect x="365" y="0" width="13" height="13" rx="3" fill="#f5f0fa" stroke="#8a6fbf"/><text x="384" y="11" font-size="12" fill="#5a6b76">实例走查</text></g>
+<text x="30" y="452" font-size="12" fill="#8b9aa4">五个后端函数互相独立，公共约定只有三条：凭证现读（只信 semantic_config.db）· fetchmany(max_rows+1) · 错误封 ExecResult 不抛</text>
+<text x="30" y="474" font-size="12" fill="#8b9aa4">适配是四层各自的字典/分支——见左下「适配机制总览」；MySQL 兼容引擎在查数侧的缺口见 pymysql_direct 面板</text>`;
+
+/* ═════════════════════════ 运行时 ═════════════════════════ */
+
+let curTab = 'full';
+
+const DEFS = '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
+  + 'markerHeight="6" orient="auto-start-reverse">'
+  + '<path d="M 0 0 L 10 5 L 0 10 z" fill="#93a5b3"/></marker>'
+  + '<marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" '
+  + 'markerHeight="6" orient="auto-start-reverse">'
+  + '<path d="M 0 0 L 10 5 L 0 10 z" fill="#7fbf8f"/></marker>';
+
+const TABS = {
+  full: { svg: FULL_SVG, vb: '0 0 1200 505' },
+  gen:  { svg: GEN_SVG,  vb: '0 0 1200 385' },
+  route:{ svg: ROUTE_SVG, vb: '0 0 1200 505' },
+};
+
+function renderMap(){
+  const map = document.getElementById('map');
+  map.setAttribute('viewBox', TABS[curTab].vb);
+  map.innerHTML = '<defs>' + DEFS + '</defs>' + TABS[curTab].svg;
+}
+
+function switchTab(tab){
+  curTab = tab;
+  document.getElementById('tab-full').className = tab === 'full' ? 'on' : '';
+  document.getElementById('tab-gen').className  = tab === 'gen'  ? 'on' : '';
+  document.getElementById('tab-route').className = tab === 'route' ? 'on' : '';
+  renderMap();
+  document.getElementById('hint').textContent = '点击上方任意一个方块，展开它内部的子流程、输入输出数据结构与代码位置';
+  document.getElementById('detail').innerHTML = '';
+}
+
+function pick(id){
+  if(!NODES[id]) return;
+  document.querySelectorAll('.nd').forEach(function(n){ n.classList.remove('sel'); });
+  const el = document.getElementById('g' + id);
+  if(el) el.classList.add('sel');
+  document.getElementById('detail').innerHTML = NODES[id];
+  const t = el ? el.querySelector('text').textContent : id;
+  document.getElementById('hint').textContent = '当前在看：' + t;
+  document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+document.addEventListener('DOMContentLoaded', function(){ switchTab('full'); });
+</script>
+</body>
+</html>
